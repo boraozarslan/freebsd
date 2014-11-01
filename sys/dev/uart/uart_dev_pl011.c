@@ -24,6 +24,8 @@
  * SUCH DAMAGE.
  */
 
+#include "opt_platform.h"
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -114,6 +116,32 @@ static struct uart_ops uart_pl011_ops = {
 	.rxready = uart_pl011_rxready,
 	.getc = uart_pl011_getc,
 };
+
+#ifdef EARLY_PRINTF
+/*
+ * XXX: Make sure that when using EARLY_PRINTF EARLY_UART_VA
+ *      is defined and has specified and not default value.
+ */
+#if !defined(EARLY_UART_VA) || (EARLY_UART_VA == 1)
+#error "Early UART base address not defined"
+#endif
+
+static void
+eputc(int c)
+{
+	volatile uint32_t *uart_dr =
+	    (volatile uint32_t *)(EARLY_UART_VA) + UART_DR;
+	volatile uint32_t *uart_fr =
+	    (volatile uint32_t *)(EARLY_UART_VA) + UART_FR;
+
+	while (uart_fr[0] & FR_TXFF)
+		;
+
+	uart_dr[0] = c;
+}
+
+early_putc_t *early_putc = eputc;
+#endif
 
 static int
 uart_pl011_probe(struct uart_bas *bas)
