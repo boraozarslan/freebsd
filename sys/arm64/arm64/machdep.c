@@ -557,19 +557,6 @@ init_proc0(vm_offset_t kstack)
 	pcpup->pc_curpcb = thread0.td_pcb;
 }
 
-#ifdef EARLY_PRINTF
-static void 
-foundation_early_putc(int c)
-{
-	volatile uint32_t *uart = (uint32_t*)0x1c090000;
-
-	/* TODO: Wait for space in the fifo */
-	uart[0] = c;
-}
-
-early_putc_t *early_putc = foundation_early_putc;
-#endif
-
 typedef struct {
 	uint32_t type;
 	uint64_t phys_start;

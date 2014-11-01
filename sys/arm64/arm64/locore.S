@@ -26,6 +26,8 @@
  * $FreeBSD$
  */
 
+#include "opt_platform.h"
+
 #include "assym.s"
 #include <sys/syscall.h>
 #include <machine/asm.h>
@@ -313,16 +315,38 @@ create_pagetables:
 	mov	x9, x27
 	mov	x8, x9		/* VA start (== PA start) */
 	bl	build_section_pagetable
-
-	/* Create a table for the UART (TODO: Remove) */
+#if defined(EARLY_PRINTF)
+	/*
+	 * In order to map UART registers for early
+	 * printf we need EARLY_UART_VA/PA defined and valid.
+	 * It is assumed that when EARLY_UART_VA/PA are defined
+	 * but not specified their values are 1 (default for option).
+	 * Early UART can be mapped VA == PA or VA != PA
+	 */
+#if !defined(EARLY_UART_PA) || (EARLY_UART_PA == 1) || \
+	!defined(EARLY_UART_VA) || (EARLY_UART_VA == 1)
+#error Early UART base (VA/PA) address not defined
+#endif
 	mov	x7, #0
-	mov	x8, #0x10000000		/* VA start (== PA start) */
-	mov	x9, #0x10000000		/* PA start */
+	ldr	x8, early_uart_va
+	/* Align VA to 1 GB */
+	mov	x9, #L1_OFFSET
+	bic	x8, x8, x9
+	ldr	x9, early_uart_pa
 	bl	build_section_pagetable
-
+#endif
 	/* Restore the Link register */
 	mov	x30, x5
 	ret
+
+#if defined(EARLY_PRINTF)
+	.align 3
+early_uart_pa:
+	.quad	(EARLY_UART_PA)
+
+early_uart_va:
+	.quad	(EARLY_UART_VA)
+#endif
 
 /*
  * Builds a 1 GiB page table entry
