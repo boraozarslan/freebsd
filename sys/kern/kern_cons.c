@@ -105,6 +105,12 @@ static struct consdev cons_consdev;
 DATA_SET(cons_set, cons_consdev);
 SET_DECLARE(cons_set, struct consdev);
 
+#if defined(EARLY_PRINTF)
+/* void foo_early_putc(int c); */
+void __CONCAT(EARLY_PRINTF, _early_putc)(int);
+early_putc_t *early_putc = __CONCAT(EARLY_PRINTF, _early_putc);
+#endif
+
 void
 cninit(void)
 {
