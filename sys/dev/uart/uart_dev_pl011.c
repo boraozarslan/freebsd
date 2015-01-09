@@ -193,6 +193,20 @@ uart_pl011_term(struct uart_bas *bas)
 {
 }
 
+#if defined(EARLY_PRINTF)
+void uart_pl011_early_putc(int c);
+void
+uart_pl011_early_putc(int c)
+{
+	volatile uint32_t *EARLY_UART_DR = (uint32_t *)SOCDEV_VA;
+	volatile uint32_t *EARLY_UART_FR = (uint32_t *)(SOCDEV_VA + 0x18);
+
+	while ((*EARLY_UART_FR & FR_TXFF) != 0)
+		;
+	*EARLY_UART_DR = c & 0xff;
+}
+#endif
+
 static void
 uart_pl011_putc(struct uart_bas *bas, int c)
 {

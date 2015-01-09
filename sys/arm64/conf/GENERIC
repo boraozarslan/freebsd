@@ -85,7 +85,10 @@ options 	INVARIANT_SUPPORT	# Extra sanity checks of internal structures, require
 #options 	WITNESS			# Enable checks to detect deadlocks and cycles
 #options 	WITNESS_SKIPSPIN	# Don't run witness on spinlocks for speed
 options 	MALLOC_DEBUG_MAXZONES=8	# Separate malloc(9) zones
-options 	EARLY_PRINTF
+
+options 	EARLY_PRINTF=uart_pl011
+options 	SOCDEV_PA=0x1c090000
+options 	SOCDEV_VA=0x1c090000
 
 # Serial (COM) ports
 device		uart		# Generic UART driver

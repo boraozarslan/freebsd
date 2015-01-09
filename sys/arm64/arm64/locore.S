@@ -307,17 +307,20 @@ create_pagetables:
 	 */
 	add	x27, x26, #PAGE_SIZE
 
+#if defined(SOCDEV_PA) && defined(SOCDEV_VA)
+	/* Create a table for the UART */
+	mov	x6, x27		/* The initial page table */
+	mov	x7, #0
+	mov	x8, #(SOCDEV_VA)	/* VA start */
+	mov	x9, #(SOCDEV_PA)	/* PA start */
+	bl	build_section_pagetable
+#endif
+
 	/* Create the VA = PA map */
 	mov	x6, x27		/* The initial page table */
 	mov	x7, #1
 	mov	x9, x27
 	mov	x8, x9		/* VA start (== PA start) */
-	bl	build_section_pagetable
-
-	/* Create a table for the UART (TODO: Remove) */
-	mov	x7, #0
-	mov	x8, #0x10000000		/* VA start (== PA start) */
-	mov	x9, #0x10000000		/* PA start */
 	bl	build_section_pagetable
 
 	/* Restore the Link register */
