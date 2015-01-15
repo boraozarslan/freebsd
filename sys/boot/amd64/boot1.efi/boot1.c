@@ -396,6 +396,7 @@ panic(const char *fmt, ...)
 	printf("panic: %s\n", buf);
 	va_end(ap);
 
+	systab->BootServices->Exit(image, EFI_LOAD_ERROR, 0, NULL);
 	while (1) {}
 }
 
