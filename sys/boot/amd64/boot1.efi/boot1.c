@@ -99,6 +99,57 @@ static EFI_GUID BlockIoProtocolGUID = BLOCK_IO_PROTOCOL;
 static EFI_GUID DevicePathGUID = DEVICE_PATH_PROTOCOL;
 static EFI_GUID LoadedImageGUID = LOADED_IMAGE_PROTOCOL;
 static EFI_GUID ConsoleControlGUID = EFI_CONSOLE_CONTROL_PROTOCOL_GUID;
+static EFI_GUID ShimLockGUID = { 0x605dab50, 0xe046, 0x4300, {0xab, 0xb6, 0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23} };
+
+/*
+ * XXX: From shim.h, from here...
+ */
+
+INTERFACE_DECL(_SHIM_LOCK);
+
+typedef
+EFI_STATUS
+(*EFI_SHIM_LOCK_VERIFY) (
+        IN VOID *buffer,
+        IN UINT32 size
+        );
+
+typedef
+EFI_STATUS
+(*EFI_SHIM_LOCK_HASH) (
+        IN char *data,
+        IN int datasize,
+        void *context,
+        UINT8 *sha256hash,
+        UINT8 *sha1hash
+        );
+
+typedef
+EFI_STATUS
+(*EFI_SHIM_LOCK_CONTEXT) (
+        IN VOID *data,
+        IN unsigned int datasize,
+        void *context
+        );
+
+typedef
+EFI_STATUS
+(*EFI_SHIM_LOCK_EXECUTE) (
+	IN EFI_HANDLE *image,
+        IN VOID *data,
+        IN unsigned int datasize
+        );
+
+typedef struct _SHIM_LOCK {
+        EFI_SHIM_LOCK_VERIFY Verify;
+        EFI_SHIM_LOCK_HASH Hash;
+        EFI_SHIM_LOCK_CONTEXT Context;
+        EFI_SHIM_LOCK_EXECUTE Execute;
+} SHIM_LOCK;
+
+/*
+ * XXX: ...to here.
+ */
 
 static EFI_BLOCK_IO *bootdev;
 static EFI_DEVICE_PATH *bootdevpath;
@@ -159,7 +210,7 @@ EFI_STATUS efi_main(EFI_HANDLE Ximage, EFI_SYSTEM_TABLE* Xsystab)
 	bootdevhandle = handles[i];
 	load(path);
 		
-	panic("Load failed");
+	panic("Failed to load %s", path);
 
 	return EFI_SUCCESS;
 }
@@ -291,6 +342,7 @@ load(const char *fname)
 	EFI_STATUS status;
 	EFI_HANDLE loaderhandle;
 	EFI_LOADED_IMAGE *loaded_image;
+	SHIM_LOCK *ShimLock = NULL;
 	void *buffer;
 	size_t bufsize;
 
@@ -304,7 +356,18 @@ load(const char *fname)
 	    bufsize, &buffer);
 	fsread(ino, buffer, bufsize);
 	
-	/* XXX: For secure boot, we need our own loader here */
+	status = systab->BootServices->LocateProtocol(&ShimLockGUID, NULL,
+	    (VOID **)&ShimLock);
+	if (status == EFI_SUCCESS) {
+		printf("Executing %s using Secure Boot Shim\n", fname);
+		status = ShimLock->Execute(image, buffer, bufsize);
+		/*
+		 * If successful, the code below won't be reached.
+		 */
+		panic("Execute failed with error %d", status);
+	}
+
+	printf("Secure Boot Shim not available\n");
 	status = systab->BootServices->LoadImage(TRUE, image, bootdevpath,
 	    buffer, bufsize, &loaderhandle);
 
