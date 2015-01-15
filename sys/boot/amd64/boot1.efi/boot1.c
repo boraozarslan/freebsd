@@ -370,12 +370,19 @@ load(const char *fname)
 	printf("Secure Boot Shim not available\n");
 	status = systab->BootServices->LoadImage(TRUE, image, bootdevpath,
 	    buffer, bufsize, &loaderhandle);
+	if (EFI_ERROR(status))
+		printf("LoadImage failed with error %d\n", status);
 
 	status = systab->BootServices->HandleProtocol(loaderhandle,
 	    &LoadedImageGUID, (VOID**)&loaded_image);
+	if (EFI_ERROR(status))
+		printf("HandleProtocol failed with error %d\n", status);
+
 	loaded_image->DeviceHandle = bootdevhandle;
 
 	status = systab->BootServices->StartImage(loaderhandle, NULL, NULL);
+	if (EFI_ERROR(status))
+		printf("StartImage failed with error %d\n", status);
 }
 
 static void
