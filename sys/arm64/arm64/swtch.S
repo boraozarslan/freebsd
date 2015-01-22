@@ -39,10 +39,6 @@ __FBSDID("$FreeBSD$");
  * void cpu_throw(struct thread *old, struct thread *new)
  */
 ENTRY(cpu_throw)
-#ifdef SMP
-#error cpu_throw needs to be ported to support SMP
-#endif
-
 #ifdef VFP
 	/* Backup the new thread pointer around a call to C code */
 	mov	x19, x1
@@ -100,10 +96,6 @@ END(cpu_throw)
  * x3 to x7, x16 and x17 are caller saved
  */
 ENTRY(cpu_switch)
-#ifdef SMP
-#error cpu_switch needs to be ported to support SMP
-#endif
-
 	/* Store the new curthread */
 	str	x1, [x18, #PC_CURTHREAD]
 	/* And the new pcb */
