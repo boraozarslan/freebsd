@@ -341,16 +341,12 @@ static int
 thunder_pcie_read_ivar(device_t dev, device_t child, int index,
     uintptr_t *result)
 {
-	int unit_to_bus[15] = {
-		0,1,2,3,4,0,1,2,3,0,1,0,1,2,3
-	}; /* WA for now, assumes static topology */
 	int domain;
 
 	if (index == PCIB_IVAR_BUS) {
-		if (device_get_unit(dev) > 14 || device_get_unit(dev) < 0)
-			return (ENOENT);
-		*result = unit_to_bus[device_get_unit(dev)];
+		*result = 0; /* this pcib adds only pci bus 0 as child */
 		return (0);
+
 	}
 	if (index == PCIB_IVAR_DOMAIN) {
 		if (thunder_pcie_get_ecam_domain(dev, &domain))
