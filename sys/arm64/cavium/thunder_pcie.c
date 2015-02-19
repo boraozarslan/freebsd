@@ -70,7 +70,6 @@ __FBSDID("$FreeBSD$");
 	(((func) & PCIE_FUNC_MASK) << PCIE_FUNC_SHIFT)	|	\
 	((reg) & PCIE_REG_MASK))
 
-#define ECAM_COUNT		4
 #define MAX_RANGES_TUPLES	3
 #define MIN_RANGES_TUPLES	2
 
@@ -85,7 +84,7 @@ struct pcie_range {
 };
 
 struct thunder_pcie_softc {
-	struct pcie_range	ranges[ECAM_COUNT][MAX_RANGES_TUPLES];
+	struct pcie_range	ranges[MAX_RANGES_TUPLES];
 	struct rman		mem_rman;
 	struct resource		*res;
 	bus_space_tag_t		bst;
@@ -96,7 +95,7 @@ struct thunder_pcie_softc {
 /* Forward prototypes */
 static int thunder_pcie_probe(device_t dev);
 static int thunder_pcie_attach(device_t dev);
-static int parse_pci_mem_ranges(struct thunder_pcie_softc *sc, int ecam);
+static int parse_pci_mem_ranges(struct thunder_pcie_softc *sc);
 static uint32_t thunder_pcie_read_config(device_t dev, u_int bus, u_int slot,
     u_int func, u_int reg, int bytes);
 static void thunder_pcie_write_config(device_t dev, u_int bus, u_int slot,
@@ -165,7 +164,11 @@ thunder_pcie_attach(device_t dev)
 
 	/* Retrieve 'ranges' property from FDT */
 
-	if (parse_pci_mem_ranges(sc, ecam))
+	if (bootverbose) {
+		device_printf(dev, "parsing FDT for ECAM%d:\n",
+		    ecam);
+	}
+	if (parse_pci_mem_ranges(sc))
 		return (ENXIO);
 
 	/* Initialize rman and allocate memory regions */
@@ -177,8 +180,8 @@ thunder_pcie_attach(device_t dev)
 	}
 
 	for (tuple = 0; tuple < MAX_RANGES_TUPLES; tuple++) {
-		base = sc->ranges[ecam][tuple].base;
-		size = sc->ranges[ecam][tuple].size;
+		base = sc->ranges[tuple].base;
+		size = sc->ranges[tuple].size;
 		if (base == 0 || size == 0)
 			continue; /* empty range element */
 
@@ -195,7 +198,7 @@ thunder_pcie_attach(device_t dev)
 }
 
 static int
-parse_pci_mem_ranges(struct thunder_pcie_softc *sc, int ecam)
+parse_pci_mem_ranges(struct thunder_pcie_softc *sc)
 {
 	phandle_t node;
 	pcell_t pci_addr_cells, parent_addr_cells, size_cells;
@@ -205,11 +208,6 @@ parse_pci_mem_ranges(struct thunder_pcie_softc *sc, int ecam)
 	int rv;
 
 	node = ofw_bus_get_node(sc->dev);
-
-	if (ecam > (ECAM_COUNT - 1) || ecam < 0) {
-		device_printf(sc->dev, "Unexpected ECAM number\n");
-		return (ENXIO);
-	}
 
 	if (fdt_addrsize_cells(node, &pci_addr_cells, &size_cells))
 		return (ENXIO);
@@ -239,29 +237,24 @@ parse_pci_mem_ranges(struct thunder_pcie_softc *sc, int ecam)
 
 	cell_ptr = ranges_buf;
 
-	if (bootverbose) {
-		device_printf(sc->dev, "parsing FDT for ECAM%d:\n",
-		    ecam);
-	}
-
 	for (tuple = 0; tuple < tuples_count; tuple++) {
 		cell_ptr += pci_addr_cells; /* move ptr to parent addr */
-		sc->ranges[ecam][tuple].base = fdt_data_get((void *)cell_ptr, 2);
+		sc->ranges[tuple].base = fdt_data_get((void *)cell_ptr, 2);
 		cell_ptr += parent_addr_cells; /* move ptr to size cells*/
-		sc->ranges[ecam][tuple].size = fdt_data_get((void *)cell_ptr, 2);
+		sc->ranges[tuple].size = fdt_data_get((void *)cell_ptr, 2);
 		cell_ptr += size_cells; /* move ptr to next tuple*/
 
 		if (bootverbose) {
 			device_printf(sc->dev, "\tBase: 0x%jx, Size: 0x%jx\n",
-			    sc->ranges[ecam][tuple].base,
-			    sc->ranges[ecam][tuple].size);
+			    sc->ranges[tuple].base,
+			    sc->ranges[tuple].size);
 		}
 
 	}
 	for (; tuple < MAX_RANGES_TUPLES; tuple++) {
 		/* zero-fill remaining tuples to mark empty elements in array */
-		sc->ranges[ecam][tuple].base = 0;
-		sc->ranges[ecam][tuple].size = 0;
+		sc->ranges[tuple].base = 0;
+		sc->ranges[tuple].size = 0;
 	}
 
 	rv = 0;
