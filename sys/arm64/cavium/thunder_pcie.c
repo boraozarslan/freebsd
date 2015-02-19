@@ -386,7 +386,6 @@ thunder_pcie_alloc_resource(device_t dev, device_t child, int type, int *rid,
 	struct thunder_pcie_softc *sc = device_get_softc(dev);
 	struct rman *rm = NULL;
 	struct resource *res;
-	int domain;
 
 	switch (type) {
 	case SYS_RES_IOPORT:
@@ -401,11 +400,9 @@ thunder_pcie_alloc_resource(device_t dev, device_t child, int type, int *rid,
 	};
 
 	if ((start == 0UL) && (end == ~0UL)) {
-		if (thunder_pcie_get_ecam_domain(dev, &domain))
-		       goto fail;
-		start = sc->ranges[domain][1].base;
-		count = sc->ranges[domain][1].size;
-		end = start + count - 1;
+		device_printf(dev,
+		    "Cannot allocate resource with unspecified range\n");
+		goto fail;
 	}
 
 	if (bootverbose) {
