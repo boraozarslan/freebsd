@@ -459,7 +459,6 @@ thunder_pcie_map_msi(device_t pcib, device_t child, int irq,
 {
 	int error;
 
-	error = 0;
 	error = arm_map_msix(child, irq, addr, data);
 	return (error);
 }
@@ -469,7 +468,6 @@ thunder_pcie_alloc_msix(device_t pcib, device_t child, int *irq)
 {
 	int error;
 
-	error = 0;
 	error = arm_alloc_msix(child, irq);
 	return (error);
 }
@@ -479,7 +477,6 @@ thunder_pcie_release_msix(device_t pcib, device_t child, int irq)
 {
 	int error;
 
-	error = 0;
 	error = arm_release_msix(child, irq);
 	return (error);
 }
