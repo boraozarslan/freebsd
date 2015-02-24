@@ -87,6 +87,7 @@ struct thunder_pcie_softc {
 	struct pcie_range	ranges[MAX_RANGES_TUPLES];
 	struct rman		mem_rman;
 	struct resource		*res;
+	int			ecam;
 	bus_space_tag_t		bst;
 	bus_space_handle_t      bsh;
 	device_t		dev;
@@ -110,7 +111,7 @@ static struct resource *thunder_pcie_alloc_resource(device_t dev,
     u_long count, u_int flags);
 static int thunder_pcie_release_resource(device_t dev, device_t child,
     int type, int rid, struct resource *res);
-static int thunder_pcie_get_ecam_domain(device_t dev, int *domain);
+static int thunder_pcie_identify_pcib(device_t dev);
 static int thunder_pcie_map_msi(device_t pcib, device_t child, int irq,
     uint64_t *addr, uint32_t *data);
 static int thunder_pcie_alloc_msix(device_t pcib, device_t child, int *irq);
@@ -137,12 +138,15 @@ thunder_pcie_attach(device_t dev)
 	int rid;
 	struct thunder_pcie_softc *sc;
 	int error;
-	int ecam; /* pcie root complex number */
 	int tuple;
 	uint64_t base, size;
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+
+	/* Identify pcib domain */
+	if (thunder_pcie_identify_pcib(dev))
+		return (ENXIO);
 
 	rid = 0;
 	sc->res = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
@@ -151,10 +155,6 @@ thunder_pcie_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	if (thunder_pcie_get_ecam_domain(dev, &ecam)) {
-		device_printf(dev, "could not determine domain.\n");
-		return (ENXIO);
-	}
 
 	sc->bst = rman_get_bustag(sc->res);
 	sc->bsh = rman_get_bushandle(sc->res);
@@ -166,7 +166,7 @@ thunder_pcie_attach(device_t dev)
 
 	if (bootverbose) {
 		device_printf(dev, "parsing FDT for ECAM%d:\n",
-		    ecam);
+		    sc->ecam);
 	}
 	if (parse_pci_mem_ranges(sc))
 		return (ENXIO);
@@ -334,7 +334,9 @@ static int
 thunder_pcie_read_ivar(device_t dev, device_t child, int index,
     uintptr_t *result)
 {
-	int domain;
+	struct thunder_pcie_softc *sc;
+
+	sc = device_get_softc(dev);
 
 	if (index == PCIB_IVAR_BUS) {
 		*result = 0; /* this pcib adds only pci bus 0 as child */
@@ -342,9 +344,7 @@ thunder_pcie_read_ivar(device_t dev, device_t child, int index,
 
 	}
 	if (index == PCIB_IVAR_DOMAIN) {
-		if (thunder_pcie_get_ecam_domain(dev, &domain))
-			return (ENOENT);
-		*result = domain;
+		*result = sc->ecam;
 		return (0);
 	}
 
@@ -431,20 +431,22 @@ fail:
 }
 
 static int
-thunder_pcie_get_ecam_domain(device_t dev, int *domain)
+thunder_pcie_identify_pcib(device_t dev)
 {
+	struct thunder_pcie_softc *sc;
 	u_long start;
 
+	sc = device_get_softc(dev);
 	start = bus_get_resource_start(dev, SYS_RES_MEMORY, 0);
 
 	if (start == THUNDER_ECAM0_CFG_BASE)
-		*domain = 0;
+		sc->ecam = 0;
 	else if (start == THUNDER_ECAM1_CFG_BASE)
-		*domain = 1;
+		sc->ecam = 1;
 	else if (start == THUNDER_ECAM2_CFG_BASE)
-		*domain = 2;
+		sc->ecam = 2;
 	else if (start == THUNDER_ECAM3_CFG_BASE)
-		*domain = 3;
+		sc->ecam = 3;
 	else {
 		device_printf(dev,
 		    "error: incorrect resource address=%#lx.\n", start);
