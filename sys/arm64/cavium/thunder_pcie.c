@@ -77,10 +77,29 @@ __FBSDID("$FreeBSD$");
 #define THUNDER_ECAM1_CFG_BASE		0x849000000000UL
 #define THUNDER_ECAM2_CFG_BASE		0x84a000000000UL
 #define THUNDER_ECAM3_CFG_BASE		0x84b000000000UL
+#define THUNDER_ECAM4_CFG_BASE		0x948000000000UL
+#define THUNDER_ECAM5_CFG_BASE		0x949000000000UL
+#define THUNDER_ECAM6_CFG_BASE		0x94a000000000UL
+#define THUNDER_ECAM7_CFG_BASE		0x94b000000000UL
+
+#define THUNDER_PEM0_REG_BASE		(0x87e0c0000000UL | (0 << 24))
+#define THUNDER_PEM1_REG_BASE		(0x87e0c0000000UL | (1 << 24))
+#define THUNDER_PEM2_REG_BASE		(0x87e0c0000000UL | (2 << 24))
+#define THUNDER_PEM3_REG_BASE		(0x87e0c0000000UL | (3 << 24))
+#define THUNDER_PEM4_REG_BASE		(0x87e0c0000000UL | (4 << 24))
+#define THUNDER_PEM5_REG_BASE		(0x87e0c0000000UL | (5 << 24))
+
+#define SLIX_S2M_REGX_ACC		0x874001000000UL
+#define SLIX_S2M_REGX_ACC_SIZE		0x1000
 
 struct pcie_range {
 	uint64_t	base;
 	uint64_t	size;
+};
+
+enum pcie_type {
+	THUNDER_ECAM,
+	THUNDER_PEM,
 };
 
 struct thunder_pcie_softc {
@@ -88,9 +107,12 @@ struct thunder_pcie_softc {
 	struct rman		mem_rman;
 	struct resource		*res;
 	int			ecam;
+	int			pem;
 	bus_space_tag_t		bst;
 	bus_space_handle_t      bsh;
 	device_t		dev;
+	enum pcie_type		type;
+	bus_space_handle_t	pem_sli_base;
 };
 
 /* Forward prototypes */
@@ -116,6 +138,13 @@ static int thunder_pcie_map_msi(device_t pcib, device_t child, int irq,
     uint64_t *addr, uint32_t *data);
 static int thunder_pcie_alloc_msix(device_t pcib, device_t child, int *irq);
 static int thunder_pcie_release_msix(device_t pcib, device_t child, int irq);
+static void modify_slix_s2m_regx_acc(int sli, int reg);
+static uint64_t thunder_pem_config_read(struct thunder_pcie_softc *sc, int reg);
+static int thunder_pem_link_init(struct thunder_pcie_softc *sc);
+static int thunder_pem_init(struct thunder_pcie_softc *sc);
+
+void *sli0_s2m_regx_base;
+void *sli1_s2m_regx_base;
 
 static int
 thunder_pcie_probe(device_t dev)
@@ -155,6 +184,18 @@ thunder_pcie_attach(device_t dev)
 		return (ENXIO);
 	}
 
+	if (sli0_s2m_regx_base == NULL)
+		sli0_s2m_regx_base = pmap_mapdev(
+		    SLIX_S2M_REGX_ACC, SLIX_S2M_REGX_ACC_SIZE);
+	if (sli1_s2m_regx_base == NULL)
+		sli1_s2m_regx_base = pmap_mapdev(
+		    SLIX_S2M_REGX_ACC | (1ul << 36), SLIX_S2M_REGX_ACC_SIZE);
+
+	if (sli0_s2m_regx_base == NULL || sli1_s2m_regx_base == NULL) {
+		device_printf(dev,
+		    "pmap_mapdev() failed to map slix_s2m_regx_base\n");
+		return (ENXIO);
+	}
 
 	sc->bst = rman_get_bustag(sc->res);
 	sc->bsh = rman_get_bushandle(sc->res);
@@ -165,8 +206,12 @@ thunder_pcie_attach(device_t dev)
 	/* Retrieve 'ranges' property from FDT */
 
 	if (bootverbose) {
-		device_printf(dev, "parsing FDT for ECAM%d:\n",
-		    sc->ecam);
+		if (sc->type == THUNDER_ECAM)
+			device_printf(dev, "parsing FDT for ECAM%d:\n",
+			    sc->ecam);
+		else
+			device_printf(dev, "parsing FDT for PEM%d:\n",
+			    sc->pem);
 	}
 	if (parse_pci_mem_ranges(sc))
 		return (ENXIO);
@@ -193,8 +238,162 @@ thunder_pcie_attach(device_t dev)
 		}
 	}
 
+	/* Initialize PEM */
+
+	if (sc->type == THUNDER_PEM) {
+		if (thunder_pem_init(sc)) {
+			device_printf(dev, "Failure during PEM init\n");
+			return (ENXIO);
+		}
+	}
+
 	device_add_child(dev, "pci", -1);
+
 	return (bus_generic_attach(dev));
+}
+
+static void
+modify_slix_s2m_regx_acc(int sli, int reg)
+{
+	uint64_t regval;
+	uint64_t address = 0;
+
+	KASSERT(reg >= 0 && reg <= 255, ("Invalid SLI reg"));
+
+	if (sli == 0) {
+		address = (uint64_t)sli0_s2m_regx_base;
+	}
+	else if (sli == 1) {
+		address = (uint64_t)sli1_s2m_regx_base;
+	}
+	else {
+		printf("SLI id is not correct\n");
+	}
+
+	if (address) {
+		address += reg << 4;
+		regval = *((uint64_t *)address);
+		regval &= ~(0xFFFFFFFFul);
+		*((uint64_t *)address) = regval;
+	}
+}
+
+#define PEM_CFG_RD	0x30
+
+static uint64_t
+thunder_pem_config_read(struct thunder_pcie_softc *sc, int reg)
+{
+	uint64_t data;
+
+	/* Write to ADDR register */
+	bus_space_write_8(sc->bst, sc->bsh, PEM_CFG_RD, reg & ~0x3);
+	bus_space_barrier(sc->bst, sc->bsh, PEM_CFG_RD, 8,
+	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
+	/* Read from DATA register */
+	data = bus_space_read_8(sc->bst, sc->bsh, PEM_CFG_RD) >> 32;
+
+	return (data);
+}
+
+#define PCIERC_CFG002	0x08
+#define PCIERC_CFG006	0x18
+#define PCIERC_CFG032	0x80
+#define PEM_ON_REG	0x420
+#define PEM_CTL_STATUS	0x0
+#define PEM_LINK_ENABLE (1 << 4)
+#define PEM_LINK_DLLA	(1 << 29)
+#define PEM_LINK_LT	(1 << 27)
+
+static int
+thunder_pem_link_init(struct thunder_pcie_softc *sc)
+{
+	uint64_t regval;
+
+	/* check whether PEM is safe to access. */
+	regval = bus_space_read_8(sc->bst, sc->bsh, PEM_ON_REG);
+	if ((regval & 0x3) != 0x3) {
+		device_printf(sc->dev, "PEM%d is not ON\n", sc->pem);
+		return (ENXIO);
+	}
+
+	regval = bus_space_read_8(sc->bst, sc->bsh, PEM_CTL_STATUS);
+	regval |= PEM_LINK_ENABLE;
+	bus_space_write_8(sc->bst, sc->bsh, PEM_CTL_STATUS, regval);
+
+	DELAY(1000);
+	regval = thunder_pem_config_read(sc, PCIERC_CFG032);
+
+	if (((regval & PEM_LINK_DLLA) == 0) || (regval & PEM_LINK_LT)) {
+		device_printf(sc->dev, "PCIe RC: Port %d Link Timeout\n", sc->pem);
+		return (ENXIO);
+	}
+
+	return (0);
+}
+
+static int
+thunder_pem_init(struct thunder_pcie_softc *sc)
+{
+	uint64_t pem_addr;
+	uint64_t region;
+	uint64_t sli_group;
+	uint64_t sli;
+	int i, retval = 0;
+
+	switch (sc->pem) {
+	case 0:
+		sli =  0;
+		sli_group = 0;
+		break;
+
+	case 1:
+		sli =  0;
+		sli_group = 1;
+		break;
+	case 2:
+		sli =  0;
+		sli_group = 2;
+		break;
+	case 3:
+		sli =  1;
+		sli_group = 0;
+		break;
+	case 4:
+		sli =  1;
+		sli_group = 1;
+		break;
+	case 5:
+		sli =  1;
+		sli_group = 2;
+		break;
+	default:
+		return (ENXIO);
+	}
+
+	retval = thunder_pem_link_init(sc);
+	if (retval) {
+		device_printf(sc->dev, "%s failed\n", __func__);
+		return retval;
+	}
+
+	/* To support 32-bit PCIe devices, set S2M_REGx_ACC[BA]=0x0 */
+	for (i = 0; i < 255; i++) {
+		modify_slix_s2m_regx_acc(sli, i);
+	}
+
+	/* PEM number and access type */
+	region = ((sli_group << 6) | (0ul << 4)) << 32;
+	pem_addr = (1ul << 47) | ((0x8 + sli) << 40) | region;
+
+	retval = bus_space_map(fdtbus_bs_tag, pem_addr, (0xFFul << 24) - 1,
+	    0, &sc->pem_sli_base);
+	if (retval) {
+		device_printf(sc->dev,
+		    "Unable to map RC%d pem_addr base address", sc->pem);
+		return (ENOMEM);
+	}
+
+	return (retval);
 }
 
 static int
@@ -270,22 +469,36 @@ thunder_pcie_read_config(device_t dev, u_int bus, u_int slot,
 	uint64_t offset;
 	uint32_t data;
 	struct thunder_pcie_softc *sc;
+	bus_space_tag_t	t;
+	bus_space_handle_t h;
 
 	if (bus > 255 || slot > 31 || func > 7 || reg > 4095)
 		return (~0U);
 
 	sc = device_get_softc(dev);
-	offset = PCIE_ADDR_OFFSET(bus, slot, func, reg);
+
+	switch (sc->type) {
+	case THUNDER_ECAM:
+		offset = PCIE_ADDR_OFFSET(bus, slot, func, reg);
+		t = sc->bst;
+		h = sc->bsh;
+		break;
+	case THUNDER_PEM:
+		offset = (bus << 24) | (slot << 19) | (func << 16) | reg;
+		t = fdtbus_bs_tag;
+		h = sc->pem_sli_base;
+		break;
+	}
 
 	switch (bytes) {
 	case 1:
-		data = bus_space_read_1(sc->bst, sc->bsh, offset);
+		data = bus_space_read_1(t, h, offset);
 		break;
 	case 2:
-		data = le16toh(bus_space_read_2(sc->bst, sc->bsh, offset));
+		data = le16toh(bus_space_read_2(t, h, offset));
 		break;
 	case 4:
-		data = le32toh(bus_space_read_4(sc->bst, sc->bsh, offset));
+		data = le32toh(bus_space_read_4(t, h, offset));
 		break;
 	default:
 		return (~0U);
@@ -300,22 +513,36 @@ thunder_pcie_write_config(device_t dev, u_int bus, u_int slot,
 {
 	uint64_t offset;
 	struct thunder_pcie_softc *sc;
+	bus_space_tag_t	t;
+	bus_space_handle_t h;
 
 	if (bus > 255 || slot > 31 || func > 7 || reg > 4095)
 		return;
 
 	sc = device_get_softc(dev);
-	offset = PCIE_ADDR_OFFSET(bus, slot, func, reg);
+
+	switch (sc->type) {
+	case THUNDER_ECAM:
+		offset = PCIE_ADDR_OFFSET(bus, slot, func, reg);
+		t = sc->bst;
+		h = sc->bsh;
+		break;
+	case THUNDER_PEM:
+		offset = (bus << 24) | (slot << 19) | (func << 16) | reg;
+		t = fdtbus_bs_tag;
+		h = sc->pem_sli_base;
+		break;
+	}
 
 	switch (bytes) {
 	case 1:
-		bus_space_write_1(sc->bst, sc->bsh, offset, val);
+		bus_space_write_1(t, h, offset, val);
 		break;
 	case 2:
-		bus_space_write_2(sc->bst, sc->bsh, offset, htole16(val));
+		bus_space_write_2(t, h, offset, htole16(val));
 		break;
 	case 4:
-		bus_space_write_4(sc->bst, sc->bsh, offset, htole32(val));
+		bus_space_write_4(t, h, offset, htole32(val));
 		break;
 	default:
 		return;
@@ -335,16 +562,30 @@ thunder_pcie_read_ivar(device_t dev, device_t child, int index,
     uintptr_t *result)
 {
 	struct thunder_pcie_softc *sc;
+	int secondary_bus = 0;
 
 	sc = device_get_softc(dev);
 
 	if (index == PCIB_IVAR_BUS) {
-		*result = 0; /* this pcib adds only pci bus 0 as child */
+		if (sc->type == THUNDER_PEM) {
+			secondary_bus = thunder_pem_config_read(sc,
+			    PCIERC_CFG006);
+			secondary_bus = (secondary_bus >> 8) & 0xFF;
+		}
+		else {
+			/* this pcib adds only pci bus 0 as child */
+			secondary_bus = 0;
+		}
+
+		*result = secondary_bus;
 		return (0);
 
 	}
 	if (index == PCIB_IVAR_DOMAIN) {
-		*result = sc->ecam;
+		if (sc->type == THUNDER_PEM)
+			*result = sc->pem;
+		else
+			*result = sc->ecam;
 		return (0);
 	}
 
@@ -439,15 +680,64 @@ thunder_pcie_identify_pcib(device_t dev)
 	sc = device_get_softc(dev);
 	start = bus_get_resource_start(dev, SYS_RES_MEMORY, 0);
 
-	if (start == THUNDER_ECAM0_CFG_BASE)
+	switch(start) {
+	case THUNDER_ECAM0_CFG_BASE:
+		sc->type = THUNDER_ECAM;
 		sc->ecam = 0;
-	else if (start == THUNDER_ECAM1_CFG_BASE)
+		break;
+	case THUNDER_ECAM1_CFG_BASE:
+		sc->type = THUNDER_ECAM;
 		sc->ecam = 1;
-	else if (start == THUNDER_ECAM2_CFG_BASE)
+		break;
+	case THUNDER_ECAM2_CFG_BASE:
+		sc->type = THUNDER_ECAM;
 		sc->ecam = 2;
-	else if (start == THUNDER_ECAM3_CFG_BASE)
+		break;
+	case THUNDER_ECAM3_CFG_BASE:
+		sc->type = THUNDER_ECAM;
 		sc->ecam = 3;
-	else {
+		break;
+	case THUNDER_ECAM4_CFG_BASE:
+		sc->type = THUNDER_ECAM;
+		sc->ecam = 4;
+		break;
+	case THUNDER_ECAM5_CFG_BASE:
+		sc->type = THUNDER_ECAM;
+		sc->ecam = 5;
+		break;
+	case THUNDER_ECAM6_CFG_BASE:
+		sc->type = THUNDER_ECAM;
+		sc->ecam = 6;
+		break;
+	case THUNDER_ECAM7_CFG_BASE:
+		sc->type = THUNDER_ECAM;
+		sc->ecam = 7;
+		break;
+	case THUNDER_PEM0_REG_BASE:
+		sc->type = THUNDER_PEM;
+		sc->pem = 0;
+		break;
+	case THUNDER_PEM1_REG_BASE:
+		sc->type = THUNDER_PEM;
+		sc->pem = 1;
+		break;
+	case THUNDER_PEM2_REG_BASE:
+		sc->type = THUNDER_PEM;
+		sc->pem = 2;
+		break;
+	case THUNDER_PEM3_REG_BASE:
+		sc->type = THUNDER_PEM;
+		sc->pem = 3;
+		break;
+	case THUNDER_PEM4_REG_BASE:
+		sc->type = THUNDER_PEM;
+		sc->pem = 4;
+		break;
+	case THUNDER_PEM5_REG_BASE:
+		sc->type = THUNDER_PEM;
+		sc->pem = 5;
+		break;
+	default:
 		device_printf(dev,
 		    "error: incorrect resource address=%#lx.\n", start);
 		return (ENXIO);
