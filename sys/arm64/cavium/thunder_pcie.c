@@ -93,7 +93,8 @@ __FBSDID("$FreeBSD$");
 #define SLIX_S2M_REGX_ACC_SIZE		0x1000
 
 struct pcie_range {
-	uint64_t	base;
+	uint64_t	pci_base;
+	uint64_t	phys_base;
 	uint64_t	size;
 };
 
@@ -119,6 +120,8 @@ struct thunder_pcie_softc {
 static int thunder_pcie_probe(device_t dev);
 static int thunder_pcie_attach(device_t dev);
 static int parse_pci_mem_ranges(struct thunder_pcie_softc *sc);
+static uint64_t range_addr_pci_to_phys(struct thunder_pcie_softc *sc,
+    uint64_t pci_addr);
 static uint32_t thunder_pcie_read_config(device_t dev, u_int bus, u_int slot,
     u_int func, u_int reg, int bytes);
 static void thunder_pcie_write_config(device_t dev, u_int bus, u_int slot,
@@ -225,7 +228,7 @@ thunder_pcie_attach(device_t dev)
 	}
 
 	for (tuple = 0; tuple < MAX_RANGES_TUPLES; tuple++) {
-		base = sc->ranges[tuple].base;
+		base = sc->ranges[tuple].phys_base;
 		size = sc->ranges[tuple].size;
 		if (base == 0 || size == 0)
 			continue; /* empty range element */
@@ -396,11 +399,40 @@ thunder_pem_init(struct thunder_pcie_softc *sc)
 	return (retval);
 }
 
+static uint64_t __unused
+range_addr_pci_to_phys(struct thunder_pcie_softc *sc, uint64_t pci_addr)
+{
+	struct pcie_range *r;
+	uint64_t offset;
+	int tuple;
+
+	/* Find physical address corresponding to given bus address */
+	for (tuple = 0; tuple < MAX_RANGES_TUPLES; tuple++) {
+		r = &sc->ranges[tuple];
+		if (pci_addr >= r->pci_base &&
+		    pci_addr < (r->pci_base + r->size)) {
+			/* Given pci addr is in this range.
+			 * Translate bus addr to phys addr.
+			 */
+			offset = pci_addr - r->pci_base;
+			return (r->phys_base + offset);
+		}
+	}
+	return (0);
+}
+
+#define SPACE_CODE_SHIFT	24
+#define SPACE_CODE_MASK		0x3
+#define SPACE_CODE_IO_SPACE	0x1
+#define PROPS_CELL_SIZE		1
+#define PCI_ADDR_CELL_SIZE	2
+
 static int
 parse_pci_mem_ranges(struct thunder_pcie_softc *sc)
 {
 	phandle_t node;
 	pcell_t pci_addr_cells, parent_addr_cells, size_cells;
+	pcell_t attributes;
 	pcell_t *ranges_buf, *cell_ptr;
 	int cells_count, tuples_count;
 	int tuple;
@@ -437,22 +469,36 @@ parse_pci_mem_ranges(struct thunder_pcie_softc *sc)
 	cell_ptr = ranges_buf;
 
 	for (tuple = 0; tuple < tuples_count; tuple++) {
-		cell_ptr += pci_addr_cells; /* move ptr to parent addr */
-		sc->ranges[tuple].base = fdt_data_get((void *)cell_ptr, 2);
+		attributes = fdt_data_get((void *)cell_ptr, PROPS_CELL_SIZE);
+		attributes = (attributes >> SPACE_CODE_SHIFT) & SPACE_CODE_MASK;
+		if (attributes == SPACE_CODE_IO_SPACE) {
+			/* Ignore I/O space range, mark as empty */
+			sc->ranges[tuple].phys_base = 0;
+			sc->ranges[tuple].size = 0;
+			cell_ptr +=
+			    (pci_addr_cells + parent_addr_cells + size_cells);
+			continue;
+		}
+		cell_ptr += PROPS_CELL_SIZE; /* move ptr to pci addr */
+		sc->ranges[tuple].pci_base = fdt_data_get((void *)cell_ptr, 2);
+		cell_ptr += PCI_ADDR_CELL_SIZE; /* move ptr to cpu addr */
+		sc->ranges[tuple].phys_base = fdt_data_get((void *)cell_ptr, 2);
 		cell_ptr += parent_addr_cells; /* move ptr to size cells*/
 		sc->ranges[tuple].size = fdt_data_get((void *)cell_ptr, 2);
 		cell_ptr += size_cells; /* move ptr to next tuple*/
 
 		if (bootverbose) {
-			device_printf(sc->dev, "\tBase: 0x%jx, Size: 0x%jx\n",
-			    sc->ranges[tuple].base,
+			device_printf(sc->dev,
+			    "\tPCI addr: 0x%jx, CPU addr: 0x%jx, Size: 0x%jx\n",
+			    sc->ranges[tuple].pci_base,
+			    sc->ranges[tuple].phys_base,
 			    sc->ranges[tuple].size);
 		}
 
 	}
 	for (; tuple < MAX_RANGES_TUPLES; tuple++) {
 		/* zero-fill remaining tuples to mark empty elements in array */
-		sc->ranges[tuple].base = 0;
+		sc->ranges[tuple].phys_base = 0;
 		sc->ranges[tuple].size = 0;
 	}
 
