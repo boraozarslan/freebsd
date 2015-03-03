@@ -89,6 +89,15 @@ __FBSDID("$FreeBSD$");
 #define THUNDER_PEM4_REG_BASE		(0x87e0c0000000UL | (4 << 24))
 #define THUNDER_PEM5_REG_BASE		(0x87e0c0000000UL | (5 << 24))
 
+#define PCIERC_CFG002	0x08
+#define PCIERC_CFG006	0x18
+#define PCIERC_CFG032	0x80
+#define PEM_ON_REG	0x420
+#define PEM_CTL_STATUS	0x0
+#define PEM_LINK_ENABLE (1 << 4)
+#define PEM_LINK_DLLA	(1 << 29)
+#define PEM_LINK_LT	(1 << 27)
+
 #define SLIX_S2M_REGX_ACC		0x874001000000UL
 #define SLIX_S2M_REGX_ACC_SIZE		0x1000
 
@@ -114,9 +123,14 @@ struct thunder_pcie_softc {
 	device_t		dev;
 	enum pcie_type		type;
 	bus_space_handle_t	pem_sli_base;
+	uint64_t		pem_bar_freemempos;
+	uint64_t		pem_bar_mem_bound;
 };
 
 /* Forward prototypes */
+
+extern int thunder_its_get_pci_devid(device_t pci_dev);
+
 static int thunder_pcie_probe(device_t dev);
 static int thunder_pcie_attach(device_t dev);
 static int parse_pci_mem_ranges(struct thunder_pcie_softc *sc);
@@ -141,10 +155,23 @@ static int thunder_pcie_map_msi(device_t pcib, device_t child, int irq,
     uint64_t *addr, uint32_t *data);
 static int thunder_pcie_alloc_msix(device_t pcib, device_t child, int *irq);
 static int thunder_pcie_release_msix(device_t pcib, device_t child, int irq);
+static int thunder_pcie_alloc_msi(device_t pcib, device_t child, int count,
+    int maxcount, int *irqs);
+static int thunder_pcie_release_msi(device_t pcib, device_t child, int count,
+    int *irqs);
 static void modify_slix_s2m_regx_acc(int sli, int reg);
 static uint64_t thunder_pem_config_read(struct thunder_pcie_softc *sc, int reg);
 static int thunder_pem_link_init(struct thunder_pcie_softc *sc);
 static int thunder_pem_init(struct thunder_pcie_softc *sc);
+static int thunder_pem_assign_resources(struct thunder_pcie_softc *sc, int bus);
+static int thunder_pem_init_empty_bars(struct thunder_pcie_softc *sc,
+    int bus, int slot, int func);
+static int thunder_pem_init_bar(struct thunder_pcie_softc *sc,
+    int bus, int slot, int func, int barno);
+static void thunder_pem_read_bar(struct thunder_pcie_softc *sc, int bus,
+    int slot, int func, int reg, pci_addr_t *mapp, pci_addr_t *testvalp,
+    int *barlen);
+static int get_pci_mapsize(uint64_t testval);
 
 void *sli0_s2m_regx_base;
 void *sli1_s2m_regx_base;
@@ -248,6 +275,17 @@ thunder_pcie_attach(device_t dev)
 			device_printf(dev, "Failure during PEM init\n");
 			return (ENXIO);
 		}
+
+		/* Read PEM secondary bus number from PCIe RC conf register */
+		int secondary_bus;
+		secondary_bus = thunder_pem_config_read(sc, PCIERC_CFG006);
+		secondary_bus = (secondary_bus >> 8) & 0xFF;
+
+		/* Allocate memory for devices on this bus, initialize BARs */
+		error = thunder_pem_assign_resources(sc, secondary_bus);
+		if (error) {
+			return (error);
+		}
 	}
 
 	device_add_child(dev, "pci", -1);
@@ -297,15 +335,6 @@ thunder_pem_config_read(struct thunder_pcie_softc *sc, int reg)
 
 	return (data);
 }
-
-#define PCIERC_CFG002	0x08
-#define PCIERC_CFG006	0x18
-#define PCIERC_CFG032	0x80
-#define PEM_ON_REG	0x420
-#define PEM_CTL_STATUS	0x0
-#define PEM_LINK_ENABLE (1 << 4)
-#define PEM_LINK_DLLA	(1 << 29)
-#define PEM_LINK_LT	(1 << 27)
 
 static int
 thunder_pem_link_init(struct thunder_pcie_softc *sc)
@@ -399,7 +428,217 @@ thunder_pem_init(struct thunder_pcie_softc *sc)
 	return (retval);
 }
 
-static uint64_t __unused
+static int
+thunder_pem_assign_resources(struct thunder_pcie_softc *sc, int bus)
+{
+	int slot, func, error;
+	uint8_t hdrtype, command;
+
+	/* Set initial free mem position */
+	/* XXX ARM64TODO: Check which range should be used */
+	sc->pem_bar_freemempos = sc->ranges[1].pci_base;
+	sc->pem_bar_mem_bound = sc->ranges[1].pci_base + sc->ranges[1].size;
+
+	/* Scan all devices and functions on given bus */
+	for (slot = 0; slot <= PCI_SLOTMAX; slot++) {
+		for (func = 0; func <= PCI_FUNCMAX; func++) {
+			if (thunder_pcie_read_config(sc->dev, bus, slot, func,
+			    0x0, 4) == 0xFFFFFFFF)
+				continue; /* no device */
+
+			hdrtype = thunder_pcie_read_config(sc->dev, bus, slot,
+			    func, PCIR_HDRTYPE, 1);
+			if ((hdrtype & PCIM_HDRTYPE) != PCIM_HDRTYPE_NORMAL)
+				continue; /* ignore bridge devices for now */
+
+			/* Disable memory space access for device */
+			command = thunder_pcie_read_config(sc->dev, bus, slot,
+			    func, PCIR_COMMAND, 1);
+			command &= ~(PCIM_CMD_MEMEN | PCIM_CMD_PORTEN);
+			thunder_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_COMMAND, command, 1);
+
+			/* Initialize all empty BARs for device */
+			error = thunder_pem_init_empty_bars(sc, bus, slot,
+			    func);
+
+			if (error)
+				return (error);
+
+			/* Enable memory space access for device */
+			command |= PCIM_CMD_BUSMASTEREN | PCIM_CMD_MEMEN;
+			thunder_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_COMMAND, command, 1);
+		}
+	}
+
+	return (0);
+}
+
+static int
+thunder_pem_init_empty_bars(struct thunder_pcie_softc *sc, int bus, int slot,
+    int func)
+{
+	int bar, i;
+
+	bar = 0;
+
+	/* Program the base address registers */
+	while (bar < PCI_MAXMAPS_0) {
+		i = thunder_pem_init_bar(sc, bus, slot, func, bar);
+		bar += i;
+		if (i < 0) {
+			device_printf(sc->dev,
+			    "BAR memory allocation error\n");
+			return (ENOMEM);
+		}
+	}
+
+	return (0);
+}
+
+static int
+get_pci_mapsize(uint64_t testval)
+{
+        int ln2size;
+
+	/* This function has been adapted based on 'pci_mapsize' in pci.c.
+	 * Returns log2 of map size decoded for memory or port map.
+	 */
+	testval &= PCIM_BAR_MEM_BASE;
+        ln2size = 0;
+        if (testval != 0) {
+                while ((testval & 1) == 0)
+                {
+                        ln2size++;
+                        testval >>= 1;
+                }
+        }
+        return (ln2size);
+}
+
+static int
+thunder_pem_init_bar(struct thunder_pcie_softc *sc,
+    int bus, int slot, int func, int barno)
+{
+	pci_addr_t base, map, testval, count, addr;
+	int barlen, mapsize, reg;
+
+	reg = PCIR_BAR(barno);
+
+	thunder_pem_read_bar(sc, bus, slot, func, reg, &map, &testval, &barlen);
+
+	/* Do not allocate I/O BARs */
+	if (PCI_BAR_IO(map)) {
+		if (bootverbose) {
+			device_printf(sc->dev, "Device at bsf=(%d:%d:%d) "
+			    "requested unsupported I/O port memory. "
+			    "Skipping BAR%d.\n", bus, slot, func, barno);
+		}
+		return (barlen);
+	}
+
+	base = map & PCIM_BAR_MEM_BASE;
+	if (base != 0) {
+		/* BAR is already initialized (non-zero address) */
+		device_printf(sc->dev,
+		    "Error: device BAR%d is already initialized. Addr=0x%jx\n",
+		    barno, base);
+		return (-1);
+	}
+
+	mapsize = get_pci_mapsize(testval);
+	count = (pci_addr_t)1 << mapsize;
+
+	/*
+	 * For I/O registers, if bottom bit is set, and the next bit up
+	 * isn't clear, we know we have a BAR that doesn't conform to the
+	 * spec, so ignore it.  Also, sanity check the size of the data
+	 * areas to the type of memory involved.  Memory must be at least
+	 * 16 bytes in size, while I/O ranges must be at least 4.
+	 */
+	if (PCI_BAR_IO(testval) && (testval & PCIM_BAR_IO_RESERVED) != 0)
+		return (barlen);
+	if ((PCI_BAR_MEM(map) && mapsize < 4) ||
+	    (PCI_BAR_IO(map) && mapsize < 2))
+		return (barlen);
+
+	/* Allocate BAR: align mem address to BAR size */
+	sc->pem_bar_freemempos = roundup2(sc->pem_bar_freemempos, count);
+	addr = sc->pem_bar_freemempos;
+	/* Move free memory position pointer */
+	sc->pem_bar_freemempos += count;
+
+	if (!addr || (sc->pem_bar_freemempos > sc->pem_bar_mem_bound)) {
+		/* Address is 0 or memory bound exceeded */
+		device_printf(sc->dev,
+		    "Error: address went outside bounds. "
+		    "Addr = 0x%jx, bound = 0x%jx\n",
+		    addr, sc->pem_bar_mem_bound);
+		return (-1);
+	}
+
+	if (bootverbose) {
+		device_printf(sc->dev, "Allocating BAR%d for device at: "
+		    "bus=%d, slot=%d, func=%d\n"
+		    "\tAddr: 0x%jx, Size: 0x%jx\n", barno, bus, slot, func,
+		    addr, count);
+	}
+
+	/* Write address to BAR */
+	thunder_pcie_write_config(sc->dev, bus, slot, func, reg,
+	    (uint32_t)addr, 4);
+	if (barlen == 2)
+		thunder_pcie_write_config(sc->dev, bus, slot, func,
+		    reg + 4, addr >> 32 , 4);
+
+	return (barlen);
+}
+
+static void
+thunder_pem_read_bar(struct thunder_pcie_softc *sc, int bus, int slot, int func,
+    int reg, pci_addr_t *mapp, pci_addr_t *testvalp, int *barlen)
+{
+	pci_addr_t map, testval, len;
+
+	/* This function has been adapted based on 'pci_read_bar' in pci.c */
+
+	map = thunder_pcie_read_config(sc->dev, bus, slot, func, reg, 4);
+	if ((map & PCIM_BAR_MEM_TYPE) == PCIM_BAR_MEM_64)
+		len = 2;
+	else
+		len = 1;
+
+	if (len == 2)
+		map |= (pci_addr_t)thunder_pcie_read_config(sc->dev, bus, slot,
+		    func, reg + 4, 4) << 32;
+
+	/*
+	 * Determine the BAR's length by writing all 1's.  The bottom
+	 * log_2(size) bits of the BAR will stick as 0 when we read
+	 * the value back.
+	 */
+	thunder_pcie_write_config(sc->dev, bus, slot, func, reg, 0xffffffff, 4);
+	testval = thunder_pcie_read_config(sc->dev, bus, slot, func, reg, 4);
+	if (len == 2) {
+		thunder_pcie_write_config(sc->dev, bus, slot, func,
+		    reg + 4, 0xffffffff, 4);
+		testval |= (pci_addr_t)thunder_pcie_read_config(sc->dev, bus,
+		    slot, func, reg + 4, 4) << 32;
+	}
+
+	/* Restore the original value of the BAR. */
+	thunder_pcie_write_config(sc->dev, bus, slot, func, reg, map, 4);
+	if (len == 2)
+		thunder_pcie_write_config(sc->dev, bus, slot, func,
+		    reg + 4, map >> 32, 4);
+
+	*mapp = map;
+	*testvalp = testval;
+	*barlen = len;
+}
+
+static uint64_t
 range_addr_pci_to_phys(struct thunder_pcie_softc *sc, uint64_t pci_addr)
 {
 	struct pcie_range *r;
@@ -685,6 +924,15 @@ thunder_pcie_alloc_resource(device_t dev, device_t child, int type, int *rid,
 		goto fail;
 	}
 
+	/* XXX ARM64TODO: Find better way to check if addr needs to be translated */
+	if (!(start & 0xF00000000000UL)) {
+		start = range_addr_pci_to_phys(sc, start);
+		end = start + count - 1;
+		/* Check if address translation was successful */
+		if (start == 0)
+			goto fail;
+	}
+
 	if (bootverbose) {
 		device_printf(dev,
 		    "rman_reserve_resource: start=%#lx, end=%#lx, count=%#lx\n",
@@ -819,6 +1067,60 @@ thunder_pcie_release_msix(device_t pcib, device_t child, int irq)
 	return (error);
 }
 
+static int
+thunder_pcie_alloc_msi(device_t pcib, device_t child, int count, int maxcount,
+    int *irqs)
+{
+	int error;
+
+	error = arm_alloc_msi(child, count, irqs);
+	return (error);
+}
+
+static int
+thunder_pcie_release_msi(device_t pcib, device_t child, int count, int *irqs)
+{
+	int error;
+
+	error = arm_release_msi(child, count, irqs);
+	return (error);
+}
+
+int __unused
+thunder_its_get_pci_devid(device_t pci_dev)
+{
+	struct thunder_pcie_softc *sc;
+	device_t pcib_dev;
+	int bsf;
+
+	pcib_dev = device_get_parent(device_get_parent(pci_dev));
+	sc = device_get_softc(pcib_dev);
+
+	bsf = (pci_get_bus(pci_dev) << 8) |
+	    (pci_get_slot(pci_dev) << 3) |
+	    (pci_get_function(pci_dev) << 0);
+
+	if (sc->type == THUNDER_ECAM) {
+		return (((pci_get_domain(pci_dev) >> 2) << 19) |
+		    ((pci_get_domain(pci_dev) % 4) << 16) | bsf );
+	}
+	else {
+		if(sc->pem < 3 )
+			return ((1 << 16) | bsf );
+
+		if(sc->pem < 6 )
+			return ((3 << 16) | bsf );
+
+		if(sc->pem < 9 )
+			return ((1 << 19) | (1 << 16) | bsf );
+
+		if(sc->pem < 12 )
+			return ((1 << 19) | (3 << 16) | bsf);
+	}
+
+	return (0);
+}
+
 static device_method_t thunder_pcie_methods[] = {
 	DEVMETHOD(device_probe,			thunder_pcie_probe),
 	DEVMETHOD(device_attach,		thunder_pcie_attach),
@@ -836,6 +1138,8 @@ static device_method_t thunder_pcie_methods[] = {
 	DEVMETHOD(pcib_map_msi,			thunder_pcie_map_msi),
 	DEVMETHOD(pcib_alloc_msix,		thunder_pcie_alloc_msix),
 	DEVMETHOD(pcib_release_msix,		thunder_pcie_release_msix),
+	DEVMETHOD(pcib_alloc_msi,		thunder_pcie_alloc_msi),
+	DEVMETHOD(pcib_release_msi,		thunder_pcie_release_msi),
 
 	DEVMETHOD_END
 };
