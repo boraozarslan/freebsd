@@ -228,6 +228,9 @@ struct gic_v3_its_softc {
 
 	unsigned long *		its_lpi_bitmap;
 	uint32_t		its_lpi_maxid;
+
+	struct mtx		its_mtx;
+	struct mtx		its_spin_mtx;
 };
 
 extern devclass_t gic_v3_its_devclass;
