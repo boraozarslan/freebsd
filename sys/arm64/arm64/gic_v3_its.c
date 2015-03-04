@@ -138,6 +138,10 @@ gic_v3_its_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 
+	/* Initialize sleep & spin mutex for ITS */
+	mtx_init(&sc->its_mtx, "ITS sleep lock", NULL, MTX_DEF);
+	mtx_init(&sc->its_spin_mtx, "ITS spin lock", NULL, MTX_SPIN);
+
 	rid = 0;
 	sc->its_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid,
 	    RF_ACTIVE);
@@ -1223,9 +1227,11 @@ its_cmd_send(struct gic_v3_its_softc *sc, struct its_cmd_desc *desc)
 	struct its_cmd_desc desc_sync;
 	uint64_t target, cwriter;
 
+	mtx_lock_spin(&sc->its_spin_mtx);
 	cmd = its_cmd_alloc(sc);
 	if (!cmd) {
 		device_printf(sc->dev, "no memory for cmd queue\n");
+		mtx_unlock_spin(&sc->its_spin_mtx);
 		return (EBUSY);
 	}
 
@@ -1246,6 +1252,7 @@ end:
 	/* Update GITS_CWRITER */
 	cwriter = its_cmd_cwriter_offset(sc, sc->its_cmdq_write);
 	gic_its_write(sc, 8, GITS_CWRITER, cwriter);
+	mtx_unlock_spin(&sc->its_spin_mtx);
 
 	its_cmd_wait_completion(sc, cmd, sc->its_cmdq_write);
 
@@ -1347,6 +1354,7 @@ gic_v3_its_alloc_msix(device_t dev, device_t pci_dev, int *irq)
 
 	sc = device_get_softc(dev);
 
+	mtx_lock(&sc->its_mtx);
 	nvecs = PCI_MSIX_NUM(pci_dev);
 
 	/*
@@ -1354,10 +1362,13 @@ gic_v3_its_alloc_msix(device_t dev, device_t pci_dev, int *irq)
 	 *	 Notice that MSI-X interrupts are allocated on one-by-one basis.
 	 */
 	its_dev = its_device_alloc(sc, pci_dev, nvecs);
-	if (its_dev == NULL)
+	if (its_dev == NULL) {
+		mtx_unlock(&sc->its_mtx);
 		return (ENOMEM);
+	}
 
 	its_device_asign_lpi(its_dev, irq);
+	mtx_unlock(&sc->its_mtx);
 
 	return (0);
 }
@@ -1371,8 +1382,10 @@ gic_v3_its_alloc_msi(device_t dev, device_t pci_dev, int count, int *irqs)
 	sc = device_get_softc(dev);
 
 	/* Allocate device as seen by ITS if not already available. */
+	mtx_lock(&sc->its_mtx);
 	its_dev = its_device_alloc(sc, pci_dev, count);
 	if (its_dev == NULL) {
+		mtx_unlock(&sc->its_mtx);
 		return (ENOMEM);
 	}
 
@@ -1380,6 +1393,7 @@ gic_v3_its_alloc_msi(device_t dev, device_t pci_dev, int count, int *irqs)
 		its_device_asign_lpi(its_dev, irqs);
 		irqs++;
 	}
+	mtx_unlock(&sc->its_mtx);
 
 	return (0);
 }
@@ -1396,7 +1410,9 @@ gic_v3_its_map_msix(device_t dev, device_t pci_dev, int irq, uint64_t *addr,
 
 	sc = device_get_softc(dev);
 	/* Verify that this device is allocated and owns this LPI */
+	mtx_lock(&sc->its_mtx);
 	its_dev = its_device_find(sc, pci_dev);
+	mtx_unlock(&sc->its_mtx);
 	if (its_dev == NULL)
 		return (EINVAL);
 
