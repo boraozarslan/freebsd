@@ -127,9 +127,22 @@ struct thunder_pcie_softc {
 	uint64_t		pem_bar_mem_bound;
 };
 
-/* Forward prototypes */
+/*
+ * Early system init.
+ * Register Thunder-specific function to acquire PCI device ID for ITS to use.
+ */
+static uint32_t thunder_its_get_pci_devid(device_t);
 
-extern int thunder_its_get_pci_devid(device_t pci_dev);
+static void
+thunder_pcie_set_devid_func(void *dummy __unused)
+{
+
+	its_set_devid_func(thunder_its_get_pci_devid);
+}
+SYSINIT(set_devid_func, SI_SUB_DRIVERS, SI_ORDER_ANY,
+    thunder_pcie_set_devid_func, NULL);
+
+/* Forward prototypes */
 
 static int thunder_pcie_probe(device_t dev);
 static int thunder_pcie_attach(device_t dev);
@@ -1086,7 +1099,7 @@ thunder_pcie_release_msi(device_t pcib, device_t child, int count, int *irqs)
 	return (error);
 }
 
-int __unused
+static uint32_t
 thunder_its_get_pci_devid(device_t pci_dev)
 {
 	struct thunder_pcie_softc *sc;

@@ -53,4 +53,19 @@ void	arm_setup_ipihandler(driver_filter_t *, u_int);
 void	arm_unmask_ipi(u_int);
 #endif
 
+/*
+ * XXX ARM64TODO: Some platforms that utilize GICv3 ITS may also use custom
+ *		  PCI device ID to target particular Interrupt Translation
+ *		  Table. In that case it is necessary for the PCI bridge driver
+ *		  to export appropriate function that returns valid device ID
+ *		  for ITS to use.
+ *
+ *		  Allow to provide such functions via SYSINIT in PCIB driver.
+ *
+ *		  There may be a need to move this somewhere since this is
+ *		  GICv3 and PCI specific.
+ */
+typedef uint32_t (*its_devid_func_t)(device_t);
+extern void its_set_devid_func(its_devid_func_t);
+
 #endif	/* _MACHINE_INTR_H */

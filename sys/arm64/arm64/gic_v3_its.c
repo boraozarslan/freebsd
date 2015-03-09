@@ -127,6 +127,27 @@ static struct gic_v3_its_softc *its_sc;
 	    reg, val);				\
 })
 
+static __inline uint32_t
+its_get_devid_default(device_t pci_dev)
+{
+
+	return (PCI_DEVID_GENERIC(pci_dev));
+}
+its_devid_func_t its_get_devid = its_get_devid_default;
+
+void
+its_set_devid_func(its_devid_func_t func)
+{
+	static boolean_t configured;
+
+	critical_enter();
+	KASSERT(configured == FALSE,
+	    ("Trying to set PCI devid function for ITS twice"));
+	its_get_devid = func;
+	configured = TRUE;
+	critical_exit();
+}
+
 int
 gic_v3_its_attach(device_t dev)
 {
@@ -1287,7 +1308,7 @@ its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev, u_int nvecs)
 	if (newdev != NULL)
 		return (newdev);
 
-	devid = PCI_DEVID(pci_dev);
+	devid = its_get_devid(pci_dev);
 
 	/* There was no previously created device. Create one now */
 	newdev = malloc(sizeof(*newdev), M_GIC_V3_ITS, M_WAITOK | M_ZERO);
