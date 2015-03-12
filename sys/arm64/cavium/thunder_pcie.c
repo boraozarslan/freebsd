@@ -82,21 +82,21 @@ __FBSDID("$FreeBSD$");
 #define THUNDER_ECAM6_CFG_BASE		0x94a000000000UL
 #define THUNDER_ECAM7_CFG_BASE		0x94b000000000UL
 
-#define THUNDER_PEM0_REG_BASE		(0x87e0c0000000UL | (0 << 24))
-#define THUNDER_PEM1_REG_BASE		(0x87e0c0000000UL | (1 << 24))
-#define THUNDER_PEM2_REG_BASE		(0x87e0c0000000UL | (2 << 24))
-#define THUNDER_PEM3_REG_BASE		(0x87e0c0000000UL | (3 << 24))
-#define THUNDER_PEM4_REG_BASE		(0x87e0c0000000UL | (4 << 24))
-#define THUNDER_PEM5_REG_BASE		(0x87e0c0000000UL | (5 << 24))
+#define THUNDER_PEMn_REG_BASE(unit)	(0x87e0c0000000UL | ((unit) << 24))
 
 #define PCIERC_CFG002	0x08
 #define PCIERC_CFG006	0x18
 #define PCIERC_CFG032	0x80
+#define SBNUM_OFFSET	8
+#define SBNUM_MASK	0xFF
 #define PEM_ON_REG	0x420
 #define PEM_CTL_STATUS	0x0
 #define PEM_LINK_ENABLE (1 << 4)
 #define PEM_LINK_DLLA	(1 << 29)
 #define PEM_LINK_LT	(1 << 27)
+
+#define MEM_BAR_MIN_LOG2SIZE	4
+#define IO_BAR_MIN_LOG2SIZE	2
 
 #define SLIX_S2M_REGX_ACC		0x874001000000UL
 #define SLIX_S2M_REGX_ACC_SIZE		0x1000
@@ -186,8 +186,8 @@ static void thunder_pem_read_bar(struct thunder_pcie_softc *sc, int bus,
     int *barlen);
 static int get_pci_mapsize(uint64_t testval);
 
-void *sli0_s2m_regx_base;
-void *sli1_s2m_regx_base;
+bus_space_handle_t sli0_s2m_regx_base = 0;
+bus_space_handle_t sli1_s2m_regx_base = 0;
 
 static int
 thunder_pcie_probe(device_t dev)
@@ -227,16 +227,16 @@ thunder_pcie_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	if (sli0_s2m_regx_base == NULL)
-		sli0_s2m_regx_base = pmap_mapdev(
-		    SLIX_S2M_REGX_ACC, SLIX_S2M_REGX_ACC_SIZE);
-	if (sli1_s2m_regx_base == NULL)
-		sli1_s2m_regx_base = pmap_mapdev(
-		    SLIX_S2M_REGX_ACC | (1ul << 36), SLIX_S2M_REGX_ACC_SIZE);
+	if (!sli0_s2m_regx_base)
+		bus_space_map(fdtbus_bs_tag, SLIX_S2M_REGX_ACC,
+		    SLIX_S2M_REGX_ACC_SIZE, 0, &sli0_s2m_regx_base);
+	if (!sli1_s2m_regx_base)
+		bus_space_map(fdtbus_bs_tag, SLIX_S2M_REGX_ACC | (1ul << 36),
+		    SLIX_S2M_REGX_ACC_SIZE, 0, &sli1_s2m_regx_base);
 
-	if (sli0_s2m_regx_base == NULL || sli1_s2m_regx_base == NULL) {
+	if (!sli0_s2m_regx_base || !sli1_s2m_regx_base) {
 		device_printf(dev,
-		    "pmap_mapdev() failed to map slix_s2m_regx_base\n");
+		    "bus_space_map failed to map slix_s2m_regx_base\n");
 		return (ENXIO);
 	}
 
@@ -292,7 +292,7 @@ thunder_pcie_attach(device_t dev)
 		/* Read PEM secondary bus number from PCIe RC conf register */
 		int secondary_bus;
 		secondary_bus = thunder_pem_config_read(sc, PCIERC_CFG006);
-		secondary_bus = (secondary_bus >> 8) & 0xFF;
+		secondary_bus = (secondary_bus >> SBNUM_OFFSET) & SBNUM_MASK;
 
 		/* Allocate memory for devices on this bus, initialize BARs */
 		error = thunder_pem_assign_resources(sc, secondary_bus);
@@ -310,25 +310,24 @@ static void
 modify_slix_s2m_regx_acc(int sli, int reg)
 {
 	uint64_t regval;
-	uint64_t address = 0;
+	bus_space_handle_t handle = 0;
 
 	KASSERT(reg >= 0 && reg <= 255, ("Invalid SLI reg"));
 
 	if (sli == 0) {
-		address = (uint64_t)sli0_s2m_regx_base;
+		handle = sli0_s2m_regx_base;
 	}
 	else if (sli == 1) {
-		address = (uint64_t)sli1_s2m_regx_base;
+		handle = sli1_s2m_regx_base;
 	}
 	else {
 		printf("SLI id is not correct\n");
 	}
 
-	if (address) {
-		address += reg << 4;
-		regval = *((uint64_t *)address);
+	if (handle) {
+		regval = bus_space_read_8(fdtbus_bs_tag, handle, reg << 4);
 		regval &= ~(0xFFFFFFFFul);
-		*((uint64_t *)address) = regval;
+		bus_space_write_8(fdtbus_bs_tag, handle, reg << 4, regval);
 	}
 }
 
@@ -456,7 +455,7 @@ thunder_pem_assign_resources(struct thunder_pcie_softc *sc, int bus)
 	for (slot = 0; slot <= PCI_SLOTMAX; slot++) {
 		for (func = 0; func <= PCI_FUNCMAX; func++) {
 			if (thunder_pcie_read_config(sc->dev, bus, slot, func,
-			    0x0, 4) == 0xFFFFFFFF)
+			    PCIR_VENDOR, 4) == 0xFFFFFFFF)
 				continue; /* no device */
 
 			hdrtype = thunder_pcie_read_config(sc->dev, bus, slot,
@@ -572,8 +571,8 @@ thunder_pem_init_bar(struct thunder_pcie_softc *sc,
 	 */
 	if (PCI_BAR_IO(testval) && (testval & PCIM_BAR_IO_RESERVED) != 0)
 		return (barlen);
-	if ((PCI_BAR_MEM(map) && mapsize < 4) ||
-	    (PCI_BAR_IO(map) && mapsize < 2))
+	if ((PCI_BAR_MEM(map) && mapsize < MEM_BAR_MIN_LOG2SIZE) ||
+	    (PCI_BAR_IO(map) && mapsize < IO_BAR_MIN_LOG2SIZE))
 		return (barlen);
 
 	/* Allocate BAR: align mem address to BAR size */
@@ -617,14 +616,13 @@ thunder_pem_read_bar(struct thunder_pcie_softc *sc, int bus, int slot, int func,
 	/* This function has been adapted based on 'pci_read_bar' in pci.c */
 
 	map = thunder_pcie_read_config(sc->dev, bus, slot, func, reg, 4);
-	if ((map & PCIM_BAR_MEM_TYPE) == PCIM_BAR_MEM_64)
+	if ((map & PCIM_BAR_MEM_TYPE) == PCIM_BAR_MEM_64) {
 		len = 2;
-	else
-		len = 1;
-
-	if (len == 2)
 		map |= (pci_addr_t)thunder_pcie_read_config(sc->dev, bus, slot,
 		    func, reg + 4, 4) << 32;
+	}
+	else
+		len = 1;
 
 	/*
 	 * Determine the BAR's length by writing all 1's.  The bottom
@@ -877,7 +875,6 @@ thunder_pcie_read_ivar(device_t dev, device_t child, int index,
 
 		*result = secondary_bus;
 		return (0);
-
 	}
 	if (index == PCIB_IVAR_DOMAIN) {
 		if (sc->type == THUNDER_PEM)
@@ -1020,27 +1017,27 @@ thunder_pcie_identify_pcib(device_t dev)
 		sc->type = THUNDER_ECAM;
 		sc->ecam = 7;
 		break;
-	case THUNDER_PEM0_REG_BASE:
+	case THUNDER_PEMn_REG_BASE(0):
 		sc->type = THUNDER_PEM;
 		sc->pem = 0;
 		break;
-	case THUNDER_PEM1_REG_BASE:
+	case THUNDER_PEMn_REG_BASE(1):
 		sc->type = THUNDER_PEM;
 		sc->pem = 1;
 		break;
-	case THUNDER_PEM2_REG_BASE:
+	case THUNDER_PEMn_REG_BASE(2):
 		sc->type = THUNDER_PEM;
 		sc->pem = 2;
 		break;
-	case THUNDER_PEM3_REG_BASE:
+	case THUNDER_PEMn_REG_BASE(3):
 		sc->type = THUNDER_PEM;
 		sc->pem = 3;
 		break;
-	case THUNDER_PEM4_REG_BASE:
+	case THUNDER_PEMn_REG_BASE(4):
 		sc->type = THUNDER_PEM;
 		sc->pem = 4;
 		break;
-	case THUNDER_PEM5_REG_BASE:
+	case THUNDER_PEMn_REG_BASE(5):
 		sc->type = THUNDER_PEM;
 		sc->pem = 5;
 		break;
@@ -1109,9 +1106,9 @@ thunder_its_get_pci_devid(device_t pci_dev)
 	pcib_dev = device_get_parent(device_get_parent(pci_dev));
 	sc = device_get_softc(pcib_dev);
 
-	bsf = (pci_get_bus(pci_dev) << 8) |
-	    (pci_get_slot(pci_dev) << 3) |
-	    (pci_get_function(pci_dev) << 0);
+	bsf = (pci_get_bus(pci_dev) << PCI_RID_BUS_SHIFT) |
+	    (pci_get_slot(pci_dev) << PCI_RID_SLOT_SHIFT) |
+	    (pci_get_function(pci_dev) << PCI_RID_FUNC_SHIFT);
 
 	if (sc->type == THUNDER_ECAM) {
 		return (((pci_get_domain(pci_dev) >> 2) << 19) |
