@@ -55,6 +55,7 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 #include <machine/cpu.h>
+#include <machine/cpufunc.h>
 #include <machine/intr.h>
 
 #include "gic_v3_reg.h"
@@ -620,7 +621,8 @@ lpi_init_conftable(struct gic_v3_its_softc *sc)
 	    (prio_default & LPI_CONF_PRIO_MASK) | LPI_CONF_GROUP1,
 	    LPI_CONFTAB_SIZE);
 
-	/* XXX ARM64TODO: Clean dcache under table here */
+	cpu_dcache_wb_range((vm_offset_t)conf_base, roundup2(LPI_CONFTAB_SIZE,
+	    PAGE_SIZE_64K));
 
 	gic_sc->gic_redists.lpis.conf_base = conf_base;
 
@@ -650,6 +652,10 @@ lpi_init_cpu(struct gic_v3_its_softc *sc)
 
 	KASSERT((vtophys(pend_base) & PAGE_MASK_64K) == 0,
 	    ("LPI Pending Table not aligned to 64 KB"));
+
+	/* Clean D-cache so that ITS can see zeroed pages */
+	cpu_dcache_wb_range((vm_offset_t)pend_base,
+	    roundup2(LPI_PENDTAB_SIZE, PAGE_SIZE_64K));
 
 	if (!pend_base) {
 		if (bootverbose) {
@@ -694,8 +700,8 @@ lpi_config_cpu(struct gic_v3_its_softc *sc)
 	gicr_ctlr = gic_r_read(gic_sc, 4, GICR_CTLR);
 	gicr_ctlr &= ~GICR_CTLR_LPI_ENABLE;
 	gic_r_write(gic_sc, 4, GICR_CTLR, gicr_ctlr);
-	/* Assuming full system barrier */
-	dsb();
+	/* Perform full system barrier */
+	dsb(sy);
 
 	/*
 	 * Set GICR_PROPBASER
@@ -751,7 +757,7 @@ lpi_config_cpu(struct gic_v3_its_softc *sc)
 	gicr_ctlr |= GICR_CTLR_LPI_ENABLE;
 	gic_r_write(gic_sc, 4, GICR_CTLR, gicr_ctlr);
 
-	dsb();
+	dsb(sy);
 
 	return (0);
 }
@@ -843,10 +849,11 @@ lpi_configure(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
 		*conf_byte &= ~LPI_CONF_ENABLE;
 
 	if (gic_sc->gic_redists.lpis.flags & LPI_FLAGS_CONF_FLUSH) {
-		/* XXX ARM64TODO: Flush the cache when we have it enabled */
+		/* Clean D-cache under configuration byte */
+		cpu_dcache_wb_range((vm_offset_t)conf_byte, sizeof(*conf_byte));
 	} else {
-		/* XXX Inner shareable store is enough */
-		dsb();
+		/* DSB inner shareable, store */
+		dsb(ishst);
 	}
 
 	its_cmd_inv(sc, its_dev, lpinum);
@@ -1082,17 +1089,15 @@ its_cmd_queue_full(struct gic_v3_its_softc *sc)
 }
 
 static __inline void
-its_cmd_sync(struct gic_v3_its_softc *sc, struct its_cmd *cmd __unused)
+its_cmd_sync(struct gic_v3_its_softc *sc, struct its_cmd *cmd)
 {
 
 	if (sc->its_flags & ITS_FLAGS_CMDQ_FLUSH) {
-		/* XXX ARM64TODO: Flush dcache under cmd */
+		/* Clean D-cache under command. */
+		cpu_dcache_wb_range((vm_offset_t)cmd, sizeof(*cmd));
 	} else {
-		/*
-		 * XXX: This is way to much.
-		 * Should only be inner shareable, store.
-		 */
-		dsb();
+		/* DSB inner shareable, store */
+		dsb(ishst);
 	}
 
 }
