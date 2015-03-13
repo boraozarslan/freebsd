@@ -160,10 +160,11 @@ db_write_bytes(vm_offset_t addr, size_t size, char *data)
 	/*
 	 * XXX ARM64TODO: Revisit while we have D-cache switched on.
 	 * For now, take care of I-cache and barriers only.
+	 * XXX ARM64TODO: Take revising barriers into consideration too.
 	 */
-	dsb();
+	dsb(sy);
 	__asm __volatile("ic ialluis" : : : "memory");
-	dsb();
+	dsb(sy);
 	isb();
 
 	return (0);

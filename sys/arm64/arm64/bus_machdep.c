@@ -89,10 +89,10 @@ generic_bs_barrier(void *t, bus_space_handle_t bsh, bus_size_t offset,
     bus_size_t size, int flags)
 {
 	/* ARM64TODO:
-	 * dsb() is full system barrier, replace with suitable weaker one.
+	 * dsb(sy) is full system barrier, replace with suitable weaker one.
 	 * Do we also need to drain L2 write buffer?
 	 */
-	dsb();
+	dsb(sy);
 }
 
 static int
