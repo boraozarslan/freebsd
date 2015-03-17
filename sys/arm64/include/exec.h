@@ -29,6 +29,4 @@
 #ifndef	_MACHINE_EXEC_H_
 #define	_MACHINE_EXEC_H_
 
-#define	__LDPGSZ	8192
-
 #endif /* !_MACHINE_EXEC_H_ */

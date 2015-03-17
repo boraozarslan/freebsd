@@ -145,20 +145,10 @@
  * 64 bit address space, mostly just for convenience.
  *
  * VM_MIN_KERNEL_ADDRESS and VM_MAX_KERNEL_ADDRESS define the start and end of
- * mappable kernel virtual address space.  VM_MIN_KERNEL_ADDRESS is basically
- * arbitrary, a convenient address is chosen which allows both the kernel text
- * and data and the prom's address space to be mapped with 1 4mb tsb page.
- * VM_MAX_KERNEL_ADDRESS is variable, computed at startup time based on the
- * amount of physical memory available.  Each 4mb tsb page provides 1g of
- * virtual address space, with the only practical limit being available
- * phsyical memory.
+ * mappable kernel virtual address space.
  *
  * VM_MIN_USER_ADDRESS and VM_MAX_USER_ADDRESS define the start and end of the
- * user address space.  There are some hardware errata about using addresses
- * at the boundary of the va hole, so we allow just under 43 bits of user
- * address space.  Note that the kernel and user address spaces overlap, but
- * this doesn't matter because they use different tlb contexts, and because
- * the kernel address space is not mapped into each process' address space.
+ * user address space.
  */
 #define	VM_MIN_ADDRESS		(0x0000000000000000UL)
 #define	VM_MAX_ADDRESS		(0xffffffffffffffffUL)
