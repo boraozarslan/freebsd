@@ -160,8 +160,12 @@ gic_v3_its_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	/* Initialize sleep & spin mutex for ITS */
+	/*
+	 * Initialize sleep & spin mutex for ITS
+	 */
+	/* Protects ITS device list and assigned LPIs bitmaps. */
 	mtx_init(&sc->its_mtx, "ITS sleep lock", NULL, MTX_DEF);
+	/* Protects access to ITS command circular buffer. */
 	mtx_init(&sc->its_spin_mtx, "ITS spin lock", NULL, MTX_SPIN);
 
 	rid = 0;
@@ -1103,11 +1107,12 @@ its_cmd_sync(struct gic_v3_its_softc *sc, struct its_cmd *cmd)
 }
 
 static struct its_cmd *
-its_cmd_alloc(struct gic_v3_its_softc *sc)
+its_cmd_alloc_locked(struct gic_v3_its_softc *sc)
 {
 	struct its_cmd *cmd;
 	size_t us_left = 1000000;
 
+	mtx_assert(&sc->its_spin_mtx, MA_OWNED);
 	while (its_cmd_queue_full(sc)) {
 		if (us_left-- == 0) {
 			/* Timeout while waiting for free command */
@@ -1254,10 +1259,10 @@ its_cmd_send(struct gic_v3_its_softc *sc, struct its_cmd_desc *desc)
 	uint64_t target, cwriter;
 
 	mtx_lock_spin(&sc->its_spin_mtx);
-	cmd = its_cmd_alloc(sc);
+	cmd = its_cmd_alloc_locked(sc);
+	mtx_unlock_spin(&sc->its_spin_mtx);
 	if (!cmd) {
 		device_printf(sc->dev, "no memory for cmd queue\n");
-		mtx_unlock_spin(&sc->its_spin_mtx);
 		return (EBUSY);
 	}
 
@@ -1265,7 +1270,9 @@ its_cmd_send(struct gic_v3_its_softc *sc, struct its_cmd_desc *desc)
 	its_cmd_sync(sc, cmd);
 
 	if (target != ITS_TARGET_NONE) {
-		cmd_sync = its_cmd_alloc(sc);
+		mtx_lock_spin(&sc->its_spin_mtx);
+		cmd_sync = its_cmd_alloc_locked(sc);
+		mtx_unlock_spin(&sc->its_spin_mtx);
 		if (!cmd_sync)
 			goto end;
 		desc_sync.cmd_type = ITS_CMD_SYNC;
@@ -1276,6 +1283,7 @@ its_cmd_send(struct gic_v3_its_softc *sc, struct its_cmd_desc *desc)
 	}
 end:
 	/* Update GITS_CWRITER */
+	mtx_lock_spin(&sc->its_spin_mtx);
 	cwriter = its_cmd_cwriter_offset(sc, sc->its_cmdq_write);
 	gic_its_write(sc, 8, GITS_CWRITER, cwriter);
 	mtx_unlock_spin(&sc->its_spin_mtx);
@@ -1286,10 +1294,11 @@ end:
 }
 
 static struct its_dev *
-its_device_find(struct gic_v3_its_softc *sc, device_t pci_dev)
+its_device_find_locked(struct gic_v3_its_softc *sc, device_t pci_dev)
 {
 	struct its_dev *its_dev;
 
+	mtx_assert(&sc->its_mtx, MA_OWNED);
 	/* Find existing device if any */
 	TAILQ_FOREACH(its_dev, &sc->its_dev_list, entry) {
 		if (its_dev->pci_dev == pci_dev)
@@ -1300,7 +1309,8 @@ its_device_find(struct gic_v3_its_softc *sc, device_t pci_dev)
 }
 
 static struct its_dev *
-its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev, u_int nvecs)
+its_device_alloc_locked(struct gic_v3_its_softc *sc, device_t pci_dev,
+    u_int nvecs)
 {
 	struct its_dev	*newdev;
 	uint64_t typer;
@@ -1308,8 +1318,9 @@ its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev, u_int nvecs)
 	u_int cpuid;
 	size_t esize;
 
+	mtx_assert(&sc->its_mtx, MA_OWNED);
 	/* Find existing device if any */
-	newdev = its_device_find(sc, pci_dev);
+	newdev = its_device_find_locked(sc, pci_dev);
 	if (newdev != NULL)
 		return (newdev);
 
@@ -1349,9 +1360,11 @@ its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev, u_int nvecs)
 }
 
 static __inline void
-its_device_asign_lpi(struct its_dev *its_dev, u_int *irq)
+its_device_asign_lpi_locked(struct gic_v3_its_softc *sc,
+    struct its_dev *its_dev, u_int *irq)
 {
 
+	mtx_assert(&sc->its_mtx, MA_OWNED);
 	KASSERT((its_dev->lpis.lpi_free > 0),
 	    ("Cannot provide more LPIs for this device. LPI num: %u, free %u",
 	    its_dev->lpis.lpi_num, its_dev->lpis.lpi_free));
@@ -1387,13 +1400,13 @@ gic_v3_its_alloc_msix(device_t dev, device_t pci_dev, int *irq)
 	 * TODO: Allocate device as seen by ITS if not already available.
 	 *	 Notice that MSI-X interrupts are allocated on one-by-one basis.
 	 */
-	its_dev = its_device_alloc(sc, pci_dev, nvecs);
+	its_dev = its_device_alloc_locked(sc, pci_dev, nvecs);
 	if (its_dev == NULL) {
 		mtx_unlock(&sc->its_mtx);
 		return (ENOMEM);
 	}
 
-	its_device_asign_lpi(its_dev, irq);
+	its_device_asign_lpi_locked(sc, its_dev, irq);
 	mtx_unlock(&sc->its_mtx);
 
 	return (0);
@@ -1409,14 +1422,14 @@ gic_v3_its_alloc_msi(device_t dev, device_t pci_dev, int count, int *irqs)
 
 	/* Allocate device as seen by ITS if not already available. */
 	mtx_lock(&sc->its_mtx);
-	its_dev = its_device_alloc(sc, pci_dev, count);
+	its_dev = its_device_alloc_locked(sc, pci_dev, count);
 	if (its_dev == NULL) {
 		mtx_unlock(&sc->its_mtx);
 		return (ENOMEM);
 	}
 
 	for (; count > 0; count--) {
-		its_device_asign_lpi(its_dev, irqs);
+		its_device_asign_lpi_locked(sc, its_dev, irqs);
 		irqs++;
 	}
 	mtx_unlock(&sc->its_mtx);
@@ -1437,7 +1450,7 @@ gic_v3_its_map_msix(device_t dev, device_t pci_dev, int irq, uint64_t *addr,
 	sc = device_get_softc(dev);
 	/* Verify that this device is allocated and owns this LPI */
 	mtx_lock(&sc->its_mtx);
-	its_dev = its_device_find(sc, pci_dev);
+	its_dev = its_device_find_locked(sc, pci_dev);
 	mtx_unlock(&sc->its_mtx);
 	if (its_dev == NULL)
 		return (EINVAL);
