@@ -4808,9 +4808,7 @@ pmap_copy_pages(vm_page_t ma[], vm_offset_t a_offset, vm_page_t mb[],
 boolean_t
 pmap_page_exists_quick(pmap_t pmap, vm_page_t m)
 {
-	panic("pmap_page_exists_quick");
-#if 0
-	struct md_page *pvh;
+	//struct md_page *pvh;
 	struct rwlock *lock;
 	pv_entry_t pv;
 	int loops = 0;
@@ -4831,22 +4829,9 @@ pmap_page_exists_quick(pmap_t pmap, vm_page_t m)
 		if (loops >= 16)
 			break;
 	}
-	if (!rv && loops < 16 && (m->flags & PG_FICTITIOUS) == 0) {
-		pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
-		TAILQ_FOREACH(pv, &pvh->pv_list, pv_next) {
-			if (PV_PMAP(pv) == pmap) {
-				rv = TRUE;
-				break;
-			}
-			loops++;
-			if (loops >= 16)
-				break;
-		}
-	}
 	rw_runlock(lock);
 	rw_runlock(&pvh_global_lock);
 	return (rv);
-#endif /* 0 */
 }
 
 /*
