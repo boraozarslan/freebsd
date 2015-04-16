@@ -150,6 +150,7 @@
 #define	PSR_M_EL1h	0x00000005
 #define	PSR_M_EL2t	0x00000008
 #define	PSR_M_EL2h	0x00000009
+#define	PSR_M_MASK	0x0000001f
 
 #define	PSR_F		0x00000040
 #define	PSR_I		0x00000080

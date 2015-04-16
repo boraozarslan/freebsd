@@ -61,4 +61,3 @@ ENTRY(__sys_##name);						\
 	b.cs	cerror;						\
 	ret;							\
 END(__sys_##name)
-

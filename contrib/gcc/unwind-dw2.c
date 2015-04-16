@@ -1393,7 +1393,11 @@ uw_advance_context (struct _Unwind_Context *context, _Unwind_FrameState *fs)
 static inline void
 init_dwarf_reg_size_table (void)
 {
-#ifdef __aarch64__ /* ARM64TODO */
+/*
+ * ARM64TODO: http://llvm.org/pr22997
+ * llvm 3.6 doesn't support __builtin_init_dwarf_reg_size_table on AArch64.
+ */
+#ifdef __aarch64__
   printf("Unimplemented: init_dwarf_reg_size_table\n");
   abort();
 #else

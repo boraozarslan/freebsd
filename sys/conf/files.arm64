@@ -1,7 +1,7 @@
+# $FreeBSD$
 
 arm/arm/devmap.c		standard
 arm/arm/generic_timer.c		standard
-arm/arm/gic.c			standard
 arm64/arm64/autoconf.c		standard
 arm64/arm64/bcopy.c		standard
 arm64/arm64/bus_machdep.c	standard
@@ -19,6 +19,7 @@ arm64/arm64/debug_monitor.c	optional	kdb
 arm64/arm64/dump_machdep.c	standard
 arm64/arm64/elf_machdep.c	standard
 arm64/arm64/exception.S		standard
+arm64/arm64/gic.c		standard
 arm64/arm64/gic_v3.c		standard
 arm64/arm64/gic_v3_fdt.c	optional	fdt
 arm64/arm64/gic_v3_its.c	standard
@@ -32,10 +33,8 @@ arm64/arm64/minidump_machdep.c	standard
 arm64/arm64/nexus.c		standard
 arm64/arm64/pic_if.m		standard
 arm64/arm64/pmap.c		standard
-arm64/arm64/psci.c		optional	psci
 arm64/arm64/stack_machdep.c	standard
-arm64/arm64/support.c		standard
-arm64/arm64/support_asm.S	standard
+arm64/arm64/support.S		standard
 arm64/arm64/swtch.S		standard
 arm64/arm64/sys_machdep.c	standard
 arm64/arm64/trap.c		standard
@@ -45,6 +44,8 @@ arm64/arm64/vm_machdep.c	standard
 arm64/cavium/thunder_pcie.c	optional	pci fdt
 dev/fdt/fdt_arm64.c		optional	fdt
 dev/ofw/ofw_cpu.c		optional	fdt
+dev/psci/psci.c			optional	psci
+dev/psci/psci_arm64.S		optional	psci
 dev/uart/uart_bus_fdt.c		optional	uart fdt
 dev/uart/uart_cpu_fdt.c		optional	uart fdt
 dev/uart/uart_dev_pl011.c	optional	uart pl011

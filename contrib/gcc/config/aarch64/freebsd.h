@@ -1,3 +1,4 @@
+/* $FreeBSD$ */
 
 #undef INIT_SECTION_ASM_OP
 #undef FINI_SECTION_ASM_OP

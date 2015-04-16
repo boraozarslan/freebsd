@@ -1,6 +1,9 @@
 /*-
- * Copyright (c) 2001 Jake Burkholder.
+ * Copyright (c) 2015 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * This software was developed by Andrew Turner under
+ * sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,29 +33,15 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/capability.h>
-#include <sys/lock.h>
-#include <sys/malloc.h>
-#include <sys/mutex.h>
-#include <sys/proc.h>
 #include <sys/sysproto.h>
 
-#include <machine/md_var.h>
 #include <machine/sysarch.h>
 
-
-#ifndef	_SYS_SYSPROTO_H_
-struct sysarch_args {
-	int	op;
-	char	*parms;
-};
-#endif
 
 int
 sysarch(struct thread *td, struct sysarch_args *uap)
 {
 
-	printf("sysarch");
-	return (0);
+	return (ENOTSUP);
 }
 

@@ -13,7 +13,7 @@ CFLAGS+= -fPIC -mno-red-zone
 CFLAGS+=	-mgeneral-regs-only
 .endif
 CFLAGS+= -I${.CURDIR}/../include
-CFLAGS+= -I${.CURDIR}/../include/${MACHINE_CPUARCH}
+CFLAGS+= -I${.CURDIR}/../include/${MACHINE}
 CFLAGS+= -I${.CURDIR}/../../../../lib/libstand
 
 # Pick up the bootstrap header for some interface items

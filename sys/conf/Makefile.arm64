@@ -20,14 +20,8 @@
 # Which version of config(8) is required.
 %VERSREQ=	600012
 
-STD8X16FONT?=	iso
-
 .if !defined(S)
-.if exists(./@/.)
-S=	./@
-.else
 S=	../../..
-.endif
 .endif
 .include "$S/conf/kern.pre.mk"
 

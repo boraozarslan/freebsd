@@ -434,11 +434,17 @@ int
 sys_sigreturn(struct thread *td, struct sigreturn_args *uap)
 {
 	ucontext_t uc;
+	uint32_t spsr;
 
 	if (uap == NULL)
 		return (EFAULT);
 	if (copyin(uap->sigcntxp, &uc, sizeof(uc)))
 		return (EFAULT);
+
+	spsr = uc.uc_mcontext.mc_gpregs.gp_spsr;
+	if ((spsr & PSR_M_MASK) != PSR_M_EL0t ||
+	    (spsr & (PSR_F | PSR_I | PSR_A | PSR_D)) != 0)
+		return (EINVAL); 
 
 	set_mcontext(td, &uc.uc_mcontext);
 	set_fpcontext(td, &uc.uc_mcontext);
@@ -561,19 +567,6 @@ init_proc0(vm_offset_t kstack)
 	thread0.td_frame = &proc0_tf;
 	pcpup->pc_curpcb = thread0.td_pcb;
 }
-
-#ifdef EARLY_PRINTF
-static void 
-foundation_early_putc(int c)
-{
-	volatile uint32_t *uart = (uint32_t*)0x1c090000;
-
-	/* TODO: Wait for space in the fifo */
-	uart[0] = c;
-}
-
-early_putc_t *early_putc = foundation_early_putc;
-#endif
 
 typedef struct {
 	uint32_t type;
@@ -766,8 +759,6 @@ try_load_dtb(caddr_t kmdp)
 		return;
 	}
 
-	printf("dtbp = %lx\n", dtbp);
-
 	if (OF_install(OFW_FDT, 0) == FALSE)
 		panic("Cannot install FDT");
 
@@ -806,8 +797,6 @@ initarm(struct arm64_bootparams *abp)
 	vm_paddr_t mem_len;
 	int i;
 
-	printf("In initarm on arm64\n");
-
 	/* Set the module data location */
 	preload_metadata = (caddr_t)(uintptr_t)(abp->modulep);
 
@@ -834,11 +823,8 @@ initarm(struct arm64_bootparams *abp)
 
 	/* Print the memory map */
 	mem_len = 0;
-	for (i = 0; i < physmap_idx; i += 2) {
+	for (i = 0; i < physmap_idx; i += 2)
 		mem_len += physmap[i + 1] - physmap[i];
-		printf("%lx - %lx\n", physmap[i], physmap[i + 1]);
-	}
-	printf("Total = %lx\n", mem_len);
 
 	/* Set the pcpu data, this is needed by pmap_bootstrap */
 	pcpup = &__pcpu[0];
@@ -876,6 +862,5 @@ initarm(struct arm64_bootparams *abp)
 	kdb_init();
 
 	early_boot = 0;
-	printf("End initarm\n");
 }
 

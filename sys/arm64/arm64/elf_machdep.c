@@ -1,4 +1,6 @@
 /*-
+ * Copyright (c) 2014 The FreeBSD Foundation.
+ * Copyright (c) 2014 Andrew Turner.
  * Copyright (c) 2001 Jake Burkholder.
  * Copyright (c) 2000 Eduardo Horvath.
  * Copyright (c) 1999 The NetBSD Foundation, Inc.
@@ -6,6 +8,9 @@
  *
  * This code is derived from software contributed to The NetBSD Foundation
  * by Paul Kranenburg.
+ *
+ * This software was developed by Andrew Turner under
+ * sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions

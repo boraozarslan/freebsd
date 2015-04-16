@@ -37,16 +37,9 @@ ENTRY(.rtld_start)
 	sub	x8, x20, #16	/* Make room for obj_main & exit proc */
 	mov	sp, x8		/* Update the stack pointer */
 
-	adr	x3, .Ldelta
-	ldr	x2, [x3]
-	sub	x1, x3, x2	/* Load the relocation delta */
-	adr	x0, _DYNAMIC	/* Load &_DYNAMIC */
-	bl	reloc_non_plt_self
-
 	mov	x0, x20		/* Pass the stack we were given to _rtld */
 	mov	x1, sp		/* exit_proc */
 	add	x2, x1, #8	/* obj_main */
-	/* Good */
 	bl	_rtld		/* Call the loader */
 	mov	x8, x0		/* Backup the entry point */
 
@@ -55,10 +48,54 @@ ENTRY(.rtld_start)
 	mov	x0, x19		/* Restore ps_strings */
 	mov	sp, x20		/* Restore the stack pointer */
 	br	x8		/* Jump to the entry point */
-.Ldelta:
-	.word	.
-	.word	0
 END(.rtld_start)
+
+/*
+ * sp + 0 = &GOT[x + 3]
+ * sp + 8 = RA
+ * x16 = &GOT[2]
+ * x17 = &_rtld_bind_start
+ */
+ENTRY(_rtld_bind_start)
+	mov	x17, sp
+
+	/* Save the arguments */
+	stp	x0, x1, [sp, #-16]!
+	stp	x2, x3, [sp, #-16]!
+	stp	x4, x5, [sp, #-16]!
+	stp	x6, x7, [sp, #-16]!
+
+	/* Calculate reloff */
+	ldr	x2, [x17, #0]	/* Get the address of the entry */
+	sub	x1, x2, x16	/* Find its offset */
+	sub	x1, x1, #8	/* Adjust for x16 not being at offset 0 */
+	/* Each rela item has 3 entriesso we need reloff = 3 * index */
+	lsl	x3, x1, #1	/* x3 = 2 * offset */
+	add	x1, x1, x3	/* x1 = x3 + offset = 3 * offset */
+
+	/* Load obj */
+	ldr	x0, [x16, #-8]
+
+	/* Call into rtld */
+	bl	_rtld_bind
+
+	/* Restore the registers saved by the plt code */
+	ldp	xzr, x30, [sp, #(4 * 16)]
+
+	/* Backup the address to branch to */
+	mov	x16, x0
+
+	/* restore the arguments */
+	ldp	x6, x7, [sp], #16
+	ldp	x4, x5, [sp], #16
+	ldp	x2, x3, [sp], #16
+	ldp	x0, x1, [sp], #16
+	/* And the part of the stack the plt entry handled */
+	add	sp, sp, #16
+
+	/* Call into the correct function */
+	br	x16
+END(_rtld_bind_start)
 
 /*
  * uint64_t _rtld_tlsdesc(struct tlsdesc *);
@@ -72,5 +109,44 @@ END(.rtld_start)
  */
 ENTRY(_rtld_tlsdesc)
 	ldr	x0, [x0, #8]
-	RET
+	ret
 END(_rtld_tlsdesc)
+
+/*
+ * uint64_t _rtld_tlsdesc_dynamic(struct tlsdesc *);
+ *
+ * TODO: We could lookup the saved index here to skip saving the entire stack.
+ */
+ENTRY(_rtld_tlsdesc_dynamic)
+	/* Store any registers we may use in rtld_tlsdesc_handle */
+	stp	x29, x30, [sp, #-(10 * 16)]!
+	mov	x29, sp
+	stp	x1, x2,   [sp, #(1 * 16)]
+	stp	x3, x4,   [sp, #(2 * 16)]
+	stp	x5, x6,   [sp, #(3 * 16)]
+	stp	x7, x8,   [sp, #(4 * 16)]
+	stp	x9, x10,  [sp, #(5 * 16)]
+	stp	x11, x12, [sp, #(6 * 16)]
+	stp	x13, x14, [sp, #(7 * 16)]
+	stp	x15, x16, [sp, #(8 * 16)]
+	stp	x17, x18, [sp, #(9 * 16)]
+
+	/* Find the tls offset */
+	ldr	x0, [x0, #8]
+	mov	x1, #1
+	bl	rtld_tlsdesc_handle
+
+	/* Restore the registers */
+	ldp	x17, x18, [sp, #(9 * 16)]
+	ldp	x15, x16, [sp, #(8 * 16)]
+	ldp	x13, x14, [sp, #(7 * 16)]
+	ldp	x11, x12, [sp, #(6 * 16)]
+	ldp	x9, x10,  [sp, #(5 * 16)]
+	ldp	x7, x8,   [sp, #(4 * 16)]
+	ldp	x5, x6,   [sp, #(3 * 16)]
+	ldp	x3, x4,   [sp, #(2 * 16)]
+	ldp	x1, x2,   [sp, #(1 * 16)]
+	ldp	x29, x30, [sp], #(10 * 16)
+
+	ret
+END(_rtld_tlsdesc_dynamic)

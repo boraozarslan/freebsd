@@ -107,9 +107,6 @@ __FBSDID("$FreeBSD$");
  *	and to when physical maps must be made correct.
  */
 
-//#include "opt_pmap.h"
-//#include "opt_vm.h"
-
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/systm.h>
@@ -1766,7 +1763,7 @@ pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 #endif /* 0 */
 
 void
-pmap_kenter_device(vm_offset_t va, vm_paddr_t pa)
+pmap_kenter_device(vm_offset_t va, vm_size_t size, vm_paddr_t pa)
 {
 	pt_entry_t *l3;
 
@@ -1774,11 +1771,20 @@ pmap_kenter_device(vm_offset_t va, vm_paddr_t pa)
 	   ("pmap_kenter_device: Invalid physical address"));
 	KASSERT((va & L3_OFFSET) == 0,
 	   ("pmap_kenter_device: Invalid virtual address"));
-	l3 = pmap_l3(kernel_pmap, va);
-	KASSERT(l3 != NULL, ("Invalid page table, va: 0x%lx", va));
-	pmap_load_store(l3, (pa & ~L3_OFFSET) | ATTR_AF | L3_PAGE |
-	    ATTR_IDX(DEVICE_MEMORY));
-	PTE_SYNC(l3);
+	KASSERT((size & PAGE_MASK) == 0,
+	    ("pmap_kenter_device: Mapping is not page-sized"));
+
+	while (size != 0) {
+		l3 = pmap_l3(kernel_pmap, va);
+		KASSERT(l3 != NULL, ("Invalid page table, va: 0x%lx", va));
+		pmap_load_store(l3, (pa & ~L3_OFFSET) | ATTR_AF | L3_PAGE |
+		    ATTR_IDX(DEVICE_MEMORY));
+		PTE_SYNC(l3);
+
+		va += PAGE_SIZE;
+		pa += PAGE_SIZE;
+		size -= PAGE_SIZE;
+	}
 }
 
 #if 0
@@ -1810,6 +1816,27 @@ pmap_kremove(vm_offset_t va)
 		cpu_dcache_wb_range(va, L3_SIZE);
 	pmap_load_clear(l3);
 	PTE_SYNC(l3);
+}
+
+void
+pmap_kremove_device(vm_offset_t va, vm_size_t size)
+{
+	pt_entry_t *l3;
+
+	KASSERT((va & L3_OFFSET) == 0,
+	   ("pmap_kremove_device: Invalid virtual address"));
+	KASSERT((size & PAGE_MASK) == 0,
+	    ("pmap_kremove_device: Mapping is not page-sized"));
+
+	while (size != 0) {
+		l3 = pmap_l3(kernel_pmap, va);
+		KASSERT(l3 != NULL, ("Invalid page table, va: 0x%lx", va));
+		pmap_load_clear(l3);
+		PTE_SYNC(l3);
+
+		va += PAGE_SIZE;
+		size -= PAGE_SIZE;
+	}
 }
 
 /*
@@ -3634,7 +3661,6 @@ retry:
  *	Set the physical protection on the
  *	specified range of this map as requested.
  */
-/* TODOandrew: Check if this is correct */
 void
 pmap_protect(pmap_t pmap, vm_offset_t sva, vm_offset_t eva, vm_prot_t prot)
 {

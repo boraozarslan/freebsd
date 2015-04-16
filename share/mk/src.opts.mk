@@ -216,7 +216,7 @@ __TT=${MACHINE}
 __DEFAULT_YES_OPTIONS+=GCC GCC_BOOTSTRAP GNUCXX
 __DEFAULT_NO_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC
 .elif ${__T} == "aarch64" || ${__T} == "amd64" || ${__T} == "i386"
-# On arm64 and x86, clang is enabled, and will be installed as the default cc.
+# On x86 and arm64, clang is enabled, and will be installed as the default cc.
 __DEFAULT_YES_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC
 __DEFAULT_NO_OPTIONS+=GCC GCC_BOOTSTRAP GNUCXX
 .elif ${__TT} == "arm" && ${__T:Marm*eb*} == ""
@@ -235,6 +235,8 @@ __DEFAULT_NO_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC
 .endif
 .if ${__T} == "aarch64"
 BROKEN_OPTIONS+=BINUTILS BINUTILS_BOOTSTRAP GDB
+# There was no support for arm64 prior to FreeBSD 11
+BROKEN_OPTIONS+=SYSCALL_COMPAT
 .endif
 
 .include <bsd.mkopt.mk>

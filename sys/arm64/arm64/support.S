@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2014 Andrew Turner
- * Copyright (c) 2014 The FreeBSD Foundation
+ * Copyright (c) 2014-2015 The FreeBSD Foundation
  * All rights reserved.
  *
  * Portions of this software were developed by Andrew Turner
@@ -46,6 +46,40 @@ ENTRY(fsu_fault)
 END(fsu_fault)
 
 /*
+ * int casueword32(volatile uint32_t *, uint32_t, uint32_t *, uint32_t)
+ */
+ENTRY(casueword32)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x4)	/* And set it */
+1:	ldxr	w4, [x0]		/* Load-exclusive the data */
+	cmp	w4, w1			/* Compare */
+	b.ne	2f			/* Not equal, exit */
+	stxr	w5, w3, [x0]		/* Store the new data */
+	cbnz	w5, 1b			/* Retry on failure */
+	ldrb	w0, [x0]		/* Try loading the data */
+2:	SET_FAULT_HANDLER(xzr, x5)	/* Reset the fault handler */
+	str	w4, [x2]		/* Store the read data */
+	ret				/* Return */
+END(casueword32)
+
+/*
+ * int casueword(volatile u_long *, u_long, u_long *, u_long)
+ */
+ENTRY(casueword)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x4)	/* And set it */
+1:	ldxr	x4, [x0]		/* Load-exclusive the data */
+	cmp	x4, x1			/* Compare */
+	b.ne	2f			/* Not equal, exit */
+	stxr	w5, x3, [x0]		/* Store the new data */
+	cbnz	w5, 1b			/* Retry on failure */
+	ldrb	w0, [x0]		/* Try loading the data */
+2:	SET_FAULT_HANDLER(xzr, x5)	/* Reset the fault handler */
+	str	x4, [x2]		/* Store the read data */
+	ret				/* Return */
+END(casueword)
+
+/*
  * int fubyte(volatile const void *)
  */
 ENTRY(fubyte)
@@ -68,29 +102,121 @@ ENTRY(fuword16)
 END(fuword16)
 
 /*
- * int32_t fuword32(volatile const void *)
+ * int32_t fueword32(volatile const void *, int32_t *)
  */
-ENTRY(fuword32)
+ENTRY(fueword32)
 	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x2)	/* And set it */
+	ldr	w0, [x0]		/* Try loading the data */
+	SET_FAULT_HANDLER(xzr, x2)	/* Reset the fault handler */
+	str	w0, [x1]		/* Save the data in kernel space */
+	mov	w0, #0			/* Success */
+	ret				/* Return */
+END(fueword32)
+
+/*
+ * long fueword(volatile const void *, int64_t *)
+ * int64_t fueword64(volatile const void *, int64_t *)
+ */
+ENTRY(fueword)
+EENTRY(fueword64)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x2)	/* And set it */
+	ldr	x0, [x0]		/* Try loading the data */
+	SET_FAULT_HANDLER(xzr, x2)	/* Reset the fault handler */
+	str	x0, [x1]		/* Save the data in kernel space */
+	mov	x0, #0			/* Success */
+	ret				/* Return */
+EEND(fueword64)
+END(fueword)
+
+/*
+ * int subyte(volatile void *, int)
+ */
+ENTRY(subyte)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x2)	/* And set it */
+	strb	w1, [x0]		/* Try storing the data */
+	SET_FAULT_HANDLER(xzr, x2)	/* Reset the fault handler */
+	mov	x0, #0			/* Success */
+	ret				/* Return */
+END(subyte)
+
+/*
+ * int suword16(volatile void *, int)
+ */
+ENTRY(suword16)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x2)	/* And set it */
+	strh	w1, [x0]		/* Try storing the data */
+	SET_FAULT_HANDLER(xzr, x2)	/* Reset the fault handler */
+	mov	x0, #0			/* Success */
+	ret				/* Return */
+END(suword16)
+
+/*
+ * int suword32(volatile void *, int)
+ */
+ENTRY(suword32)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x2)	/* And set it */
+	str	w1, [x0]		/* Try storing the data */
+	SET_FAULT_HANDLER(xzr, x2)	/* Reset the fault handler */
+	mov	x0, #0			/* Success */
+	ret				/* Return */
+END(suword32)
+
+/*
+ * int suword(volatile void *, long)
+ */
+ENTRY(suword)
+EENTRY(suword64)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x2)	/* And set it */
+	str	x1, [x0]		/* Try storing the data */
+	SET_FAULT_HANDLER(xzr, x2)	/* Reset the fault handler */
+	mov	x0, #0			/* Success */
+	ret				/* Return */
+EEND(suword64)
+END(suword)
+
+/*
+ * fuswintr and suswintr are just like fusword and susword except that if
+ * the page is not in memory or would cause a trap, then we return an error.
+ * The important thing is to prevent sleep() and switch().
+ */
+
+/*
+ * Special handler so the trap code knows not to sleep.
+ */
+ENTRY(fsu_intr_fault)
+	SET_FAULT_HANDLER(xzr, x1)	/* Reset the handler function */
+	mov	x0, #-1
+	ret
+END(fsu_fault)
+
+/*
+ * int fuswintr(void *)
+ */
+ENTRY(fuswintr)
+	adr	x6, fsu_intr_fault	/* Load the fault handler */
 	SET_FAULT_HANDLER(x6, x1)	/* And set it */
 	ldr	w0, [x0]		/* Try loading the data */
 	SET_FAULT_HANDLER(xzr, x1)	/* Reset the fault handler */
 	ret				/* Return */
-END(fuword32)
+END(fuswintr)
 
 /*
- * long fuword(volatile const void *)
- * int64_t fuword64(volatile const void *)
+ * int suswintr(void *base, int word)
  */
-ENTRY(fuword)
-EENTRY(fuword64)
-	adr	x6, fsu_fault		/* Load the fault handler */
-	SET_FAULT_HANDLER(x6, x1)	/* And set it */
-	ldr	x0, [x0]		/* Try loading the data */
-	SET_FAULT_HANDLER(xzr, x1)	/* Reset the fault handler */
+ENTRY(suswintr)
+	adr	x6, fsu_intr_fault	/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x2)	/* And set it */
+	str	w1, [x0]		/* Try storing the data */
+	SET_FAULT_HANDLER(xzr, x2)	/* Reset the fault handler */
+	mov	x0, #0			/* Success */
 	ret				/* Return */
-EEND(fuword64)
-END(fuword)
+END(suswintr)
 
 ENTRY(setjmp)
 	/* Store the stack pointer */

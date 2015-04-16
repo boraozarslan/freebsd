@@ -44,17 +44,19 @@
 #define	DTV_OFFSET		offsetof(struct tcb, tcb_dtv)
 
 /*
- * Variant II tcb, first two members are required by rtld.
+ * Variant I tcb. The structure layout is fixed, don't blindly
+ * change it.
  */
 struct tcb {
-	void			*tcb_dtv;	/* required by rtld */
-	struct pthread		*tcb_thread;	/* our hook */
+	void			*tcb_dtv;
+	struct pthread		*tcb_thread;
 };
 
 /* Called from the thread to set its private data. */
 static __inline void
 _tcb_set(struct tcb *tcb)
 {
+
 	__asm __volatile("msr	tpidr_el0, %x0" :: "r" (tcb));
 }
 
@@ -75,9 +77,8 @@ extern struct pthread *_thr_initial;
 static __inline struct pthread *
 _get_curthread(void)
 {
-	if (_thr_initial)
-		return (_tcb_get()->tcb_thread);
-	return (NULL);
+
+	return (_tcb_get()->tcb_thread);
 }
 
 #endif /* _PTHREAD_MD_H_ */

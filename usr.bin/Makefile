@@ -284,8 +284,7 @@ SUBDIR+=	iscsictl
 
 .if ${MK_KDUMP} != "no"
 SUBDIR+=        kdump
-# ARM64TODO: Port to arm64
-.if ${TARGET_ARCH} != "aarch64"
+.if ${MACHINE_ARCH} != "aarch64" # ARM64TODO truss does not build
 SUBDIR+=        truss
 .endif
 .endif
@@ -385,7 +384,7 @@ SUBDIR+=	c89
 SUBDIR+=	c99
 SUBDIR+=	ctags
 SUBDIR+=	file2c
-.if ${TARGET_ARCH} != "aarch64" # ARM64TODO gprof does not build
+.if ${MACHINE_ARCH} != "aarch64" # ARM64TODO gprof does not build
 SUBDIR+=	gprof
 .endif
 SUBDIR+=	indent
@@ -393,7 +392,7 @@ SUBDIR+=	lex
 SUBDIR+=	mkstr
 SUBDIR+=	rpcgen
 SUBDIR+=	unifdef
-.if ${TARGET_ARCH} != "aarch64" # ARM64TODO xlint does not build
+.if ${MACHINE_ARCH} != "aarch64" # ARM64TODO xlint does not build
 SUBDIR+=	xlint
 .endif
 SUBDIR+=	xstr

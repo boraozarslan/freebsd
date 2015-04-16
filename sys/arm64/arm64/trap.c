@@ -65,7 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <ddb/db_output.h>
 #endif
 
-
+extern uintptr_t fsu_intr_fault;
 
 /* Called from exception.S */
 void do_el1h_sync(struct trapframe *);
@@ -147,11 +147,20 @@ data_abort(struct trapframe *frame, uint64_t esr, int lower)
 	uint64_t far;
 	int error, sig;
 
-	far = READ_SPECIALREG(far_el1);
-
 	td = curthread;
-	p = td->td_proc;
 	pcb = td->td_pcb;
+
+	/*
+	 * Special case for fuswintr and suswintr. These can't sleep so
+	 * handle them early on in the trap handler.
+	 */
+	if (__predict_false(pcb->pcb_onfault == fsu_intr_fault)) {
+		frame->tf_elr = pcb->pcb_onfault;
+		return;
+	}
+
+	far = READ_SPECIALREG(far_el1);
+	p = td->td_proc;
 
 	if (lower)
 		map = &td->td_proc->p_vmspace->vm_map;
@@ -336,6 +345,7 @@ do_el0_error(struct trapframe *frame)
 	printf("  lr: %lx\n", frame->tf_lr);
 	printf(" elr: %lx\n", frame->tf_elr);
 	printf("spsr: %lx\n", frame->tf_spsr);
+
 	panic("do_el0_error");
 }
 
