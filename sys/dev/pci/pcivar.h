@@ -30,7 +30,11 @@
 #ifndef _PCIVAR_H_
 #define	_PCIVAR_H_
 
+#include <sys/systm.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/queue.h>
+#include <sys/taskqueue.h>
 
 /* some PCI bus constants */
 #define	PCI_MAXMAPS_0	6	/* max. no. of memory/port maps */
@@ -133,6 +137,8 @@ struct pcicfg_ht {
     uint64_t	ht_msiaddr;	/* MSI mapping base address */
 };
 
+#define PCIE_MSI_MESSAGES	2
+
 /* Interesting values for PCI-express */
 struct pcicfg_pcie {
     uint8_t	pcie_location;	/* Offset of PCI-e capability registers. */
@@ -145,6 +151,9 @@ struct pcicfg_pcie {
     uint16_t	pcie_device_ctl2; /* Second device control register. */
     uint16_t	pcie_link_ctl2;	/* Second link control register. */
     uint16_t	pcie_slot_ctl2;	/* Second slot control register. */
+    struct resource_spec *pcie_irq_spec;
+    struct resource *pcie_res_irq[PCIE_MSI_MESSAGES];
+    void	*pcie_intrhand[PCIE_MSI_MESSAGES];
 };
 
 struct pcicfg_pcix {
@@ -154,6 +163,14 @@ struct pcicfg_pcix {
 
 struct pcicfg_vf {
        int index;
+};
+
+/* Interesting values for PCIe Hotplug */
+struct pcicfg_hp {
+    struct task	hp_inttask;
+    struct callout	hp_co;
+    int		hp_cnt;		/* Giant locked */
+    uint32_t	hp_slotcap;	/* cache this */
 };
 
 #define	PCICFG_VF	0x0001 /* Device is an SR-IOV Virtual Function */
@@ -207,6 +224,7 @@ typedef struct pcicfg {
     struct pcicfg_pcix pcix;	/* PCI-X */
     struct pcicfg_iov *iov;	/* SR-IOV */
     struct pcicfg_vf vf;	/* SR-IOV Virtual Function */
+    struct pcicfg_hp hp;	/* Hotplug */
 } pcicfgregs;
 
 /* additional type 1 device config header information (PCI to PCI bridge) */

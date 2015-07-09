@@ -2115,4 +2115,3 @@ pcib_try_enable_ari(device_t pcib, device_t dev)
 
 	return (0);
 }
-

@@ -120,8 +120,11 @@ static int		pci_remap_intr_method(device_t bus, device_t dev,
 			    u_int irq);
 
 static uint16_t		pci_get_rid_method(device_t dev, device_t child);
+static int		pci_child_present(device_t, uint8_t, uint8_t, uint8_t);
+static int		pci_bus_child_present(device_t dev, device_t child);
+static device_t		pci_add_child_method(device_t, uint8_t, uint8_t);
 
-static struct pci_devinfo * pci_fill_devinfo(device_t pcib, int d, int b, int s,
+static struct pci_devinfo *pci_fill_devinfo(device_t pcib, int d, int b, int s,
     int f, uint16_t vid, uint16_t did, size_t size);
 
 static device_method_t pci_methods[] = {
@@ -162,6 +165,7 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(bus_remap_intr,	pci_remap_intr_method),
 	DEVMETHOD(bus_suspend_child,	pci_suspend_child),
 	DEVMETHOD(bus_resume_child,	pci_resume_child),
+	DEVMETHOD(bus_child_present,	pci_bus_child_present),
 
 	/* PCI interface */
 	DEVMETHOD(pci_read_config,	pci_read_config_method),
@@ -189,6 +193,7 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(pci_msix_count,	pci_msix_count_method),
 	DEVMETHOD(pci_get_rid,		pci_get_rid_method),
 	DEVMETHOD(pci_child_added,	pci_child_added_method),
+	DEVMETHOD(pci_add_child,	pci_add_child_method),
 #ifdef PCI_IOV
 	DEVMETHOD(pci_iov_attach,	pci_iov_attach_method),
 	DEVMETHOD(pci_iov_detach,	pci_iov_detach_method),
@@ -535,7 +540,7 @@ pci_romsize(uint64_t testval)
 	}
 	return (ln2size);
 }
-	
+
 /* return log2 of address range supported by map register */
 
 static int
@@ -611,7 +616,8 @@ pci_hdrtypedata(device_t pcib, int b, int s, int f, pcicfgregs *cfg)
 
 /* read configuration header into pcicfgregs structure */
 struct pci_devinfo *
-pci_read_device(device_t pcib, int d, int b, int s, int f, size_t size)
+pci_read_device(device_t pcib, uint32_t d, uint8_t b, uint8_t s, uint8_t f,
+	size_t size)
 {
 #define	REG(n, w)	PCIB_READ_CONFIG(pcib, b, s, f, n, w)
 	uint16_t vid, did;
@@ -1706,7 +1712,7 @@ pci_remap_msix_method(device_t dev, device_t child, int count,
 		free(used, M_DEVBUF);
 		return (EINVAL);
 	}
-	
+
 	/* Make sure none of the resources are allocated. */
 	for (i = 0; i < msix->msix_table_len; i++) {
 		if (msix->msix_table[i].mte_vector == 0)
@@ -2003,7 +2009,7 @@ pci_remap_intr_method(device_t bus, device_t dev, u_int irq)
 	struct msix_table_entry *mte;
 	struct msix_vector *mv;
 	uint64_t addr;
-	uint32_t data;	
+	uint32_t data;
 	int error, i, j;
 
 	/*
@@ -3505,29 +3511,20 @@ pci_add_resources(device_t bus, device_t dev, int force, uint32_t prefetchmask)
 #endif
 }
 
-static struct pci_devinfo *
-pci_identify_function(device_t pcib, device_t dev, int domain, int busno,
-    int slot, int func, size_t dinfo_size)
-{
-	struct pci_devinfo *dinfo;
-
-	dinfo = pci_read_device(pcib, domain, busno, slot, func, dinfo_size);
-	if (dinfo != NULL)
-		pci_add_child(dev, dinfo);
-
-	return (dinfo);
-}
-
 void
-pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
+pci_add_children(device_t dev)
 {
-#define	REG(n, w)	PCIB_READ_CONFIG(pcib, busno, s, f, n, w)
-	device_t pcib = device_get_parent(dev);
-	struct pci_devinfo *dinfo;
+	device_t pcib, child;
 	int maxslots;
 	int s, f, pcifunchigh;
+	uint32_t domain;
+	uint8_t busno;
 	uint8_t hdrtype;
 	int first_func;
+
+	pcib = device_get_parent(dev);
+	domain = pcib_get_domain(dev);
+	busno = pcib_get_bus(dev);
 
 	/*
 	 * Try to detect a device at slot 0, function 0.  If it exists, try to
@@ -3535,10 +3532,12 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 	 * functions on this bus as ARI changes the set of slots and functions
 	 * that are legal on this bus.
 	 */
-	dinfo = pci_identify_function(pcib, dev, domain, busno, 0, 0,
-	    dinfo_size);
-	if (dinfo != NULL && pci_enable_ari)
-		PCIB_TRY_ENABLE_ARI(pcib, dinfo->cfg.dev);
+	if (pci_child_present(pcib, busno, 0, 0) == -1 &&
+	    pci_find_dbsf(domain, busno, 0, 0) == NULL) {
+		child = PCI_ADD_CHILD(dev, 0, 0);
+		if (pci_enable_ari)
+			PCIB_TRY_ENABLE_ARI(pcib, child);
+	}
 
 	/*
 	 * Start looking for new devices on slot 0 at function 1 because we
@@ -3546,23 +3545,21 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 	 */
 	first_func = 1;
 
-	KASSERT(dinfo_size >= sizeof(struct pci_devinfo),
-	    ("dinfo_size too small"));
 	maxslots = PCIB_MAXSLOTS(pcib);
 	for (s = 0; s <= maxslots; s++, first_func = 0) {
 		pcifunchigh = 0;
 		f = 0;
-		DELAY(1);
-		hdrtype = REG(PCIR_HDRTYPE, 1);
+		hdrtype = PCIB_READ_CONFIG(pcib, busno, s, f, PCIR_HDRTYPE, 1);
 		if ((hdrtype & PCIM_HDRTYPE) > PCI_MAXHDRTYPE)
 			continue;
 		if (hdrtype & PCIM_MFDEV)
 			pcifunchigh = PCIB_MAXFUNCS(pcib);
-		for (f = first_func; f <= pcifunchigh; f++)
-			pci_identify_function(pcib, dev, domain, busno, s, f,
-			    dinfo_size);
+		for (f = first_func; f <= pcifunchigh; f++) {
+			if (pci_child_present(pcib, busno, s, f) == -1 &&
+			    pci_find_dbsf(domain, busno, s, f) == NULL)
+				PCI_ADD_CHILD(dev, s, f);
+		}
 	}
-#undef REG
 }
 
 #ifdef PCI_IOV
@@ -3613,6 +3610,7 @@ pci_create_iov_child_method(device_t bus, device_t pf, uint16_t rid,
 void
 pci_add_child(device_t bus, struct pci_devinfo *dinfo)
 {
+
 	dinfo->cfg.dev = device_add_child(bus, NULL, -1);
 	device_set_ivars(dinfo->cfg.dev, dinfo);
 	resource_list_init(&dinfo->resources);
@@ -3627,6 +3625,35 @@ void
 pci_child_added_method(device_t dev, device_t child)
 {
 
+}
+
+static device_t
+pci_add_child_method(device_t dev, uint8_t s, uint8_t f)
+{
+
+	return pci_add_child_size(dev, s, f, sizeof(struct pci_devinfo));
+}
+
+device_t
+pci_add_child_size(device_t dev, uint8_t s, uint8_t f,
+    size_t dinfo_size)
+{
+	device_t pcib;
+	struct pci_devinfo *dinfo;
+	uint32_t d;
+	uint8_t b;
+
+	pcib = device_get_parent(dev);
+	d = pcib_get_domain(dev);
+	b = pcib_get_bus(dev);
+
+	dinfo = pci_read_device(pcib, d, b, s, f, dinfo_size);
+	if (dinfo == NULL)
+		return NULL;
+
+	pci_add_child(dev, dinfo);
+
+	return dinfo->cfg.dev;
 }
 
 static int
@@ -3683,13 +3710,16 @@ pci_attach_common(device_t dev)
 	if (!tag_valid)
 #endif
 		sc->sc_dma_tag = bus_get_dma_tag(dev);
+
+	pci_hotplug_init(dev);
+
 	return (0);
 }
 
 static int
 pci_attach(device_t dev)
 {
-	int busno, domain, error;
+	int error;
 
 	error = pci_attach_common(dev);
 	if (error)
@@ -3701,9 +3731,7 @@ pci_attach(device_t dev)
 	 * the unit number to decide which bus we are probing. We ask
 	 * the parent pcib what our domain and bus numbers are.
 	 */
-	domain = pcib_get_domain(dev);
-	busno = pcib_get_bus(dev);
-	pci_add_children(dev, domain, busno, sizeof(struct pci_devinfo));
+	pci_add_children(dev);
 	return (bus_generic_attach(dev));
 }
 
@@ -3806,20 +3834,14 @@ pci_resume(device_t dev)
 		case PCIC_BRIDGE:
 		case PCIC_BASEPERIPH:
 			BUS_RESUME_CHILD(dev, child);
+			devlist[i] = NULL;
 			break;
 		}
 	}
 	for (i = 0; i < numdevs; i++) {
 		child = devlist[i];
-		switch (pci_get_class(child)) {
-		case PCIC_DISPLAY:
-		case PCIC_MEMORY:
-		case PCIC_BRIDGE:
-		case PCIC_BASEPERIPH:
-			break;
-		default:
+		if (child != NULL)
 			BUS_RESUME_CHILD(dev, child);
-		}
 	}
 	free(devlist, M_TEMP);
 	return (0);
@@ -4830,7 +4852,7 @@ pci_deactivate_resource(device_t dev, device_t child, int type,
 	if (error)
 		return (error);
 
-	/* Disable decoding for device ROMs. */	
+	/* Disable decoding for device ROMs. */
 	if (device_get_parent(child) == dev) {
 		dinfo = device_get_ivars(child);
 		if (type == SYS_RES_MEMORY && PCIR_IS_BIOS(&dinfo->cfg, rid))
@@ -5373,4 +5395,26 @@ pci_get_rid_method(device_t dev, device_t child)
 {
 
 	return (PCIB_GET_RID(device_get_parent(dev), child));
+}
+
+static int
+pci_child_present(device_t pcib, uint8_t b, uint8_t s, uint8_t f)
+{
+
+	if (PCIB_READ_CONFIG(pcib, b, s, f, PCIR_DEVVENDOR, 4) != 0xfffffffful)
+		return -1;	/* present */
+
+	return 0;
+}
+
+static int
+pci_bus_child_present(device_t dev, device_t child)
+{
+	uint8_t b, s, f;
+
+	b = pci_get_bus(child);
+	s = pci_get_slot(child);
+	f = pci_get_function(child);
+
+	return pci_child_present(device_get_parent(dev), b, s, f);
 }

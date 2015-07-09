@@ -206,4 +206,3 @@ METHOD void decode_rid {
 	int 		*slot;
 	int 		*func;
 } DEFAULT pcib_decode_rid;
-

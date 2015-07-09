@@ -202,6 +202,18 @@ METHOD void child_added {
 	device_t	child;
 };
 
+
+#
+# Add a new child at slot/function.  It is expected that the device is known
+# to be present, but a NULL device_t handle may be returned if there was an
+# issue adding the device.
+#
+METHOD device_t add_child {
+	device_t	dev;
+	uint8_t		slot;
+	uint8_t		func;
+};
+
 METHOD int iov_attach {
 	device_t	dev;
 	device_t	child;

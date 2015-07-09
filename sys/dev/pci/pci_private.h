@@ -48,9 +48,10 @@ struct pci_softc {
 extern int 	pci_do_power_resume;
 extern int 	pci_do_power_suspend;
 
-void		pci_add_children(device_t dev, int domain, int busno,
-		    size_t dinfo_size);
+void		pci_add_children(device_t dev);
 void		pci_add_child(device_t bus, struct pci_devinfo *dinfo);
+device_t	pci_add_child_size(device_t dev, uint8_t s, uint8_t f,
+		    size_t dinfo_size);
 device_t	pci_add_iov_child(device_t bus, device_t pf, size_t dinfo_size,
 		    uint16_t rid, uint16_t vid, uint16_t did);
 void		pci_add_resources(device_t bus, device_t dev, int force,
@@ -114,8 +115,7 @@ int		pci_deactivate_resource(device_t dev, device_t child, int type,
 void		pci_delete_resource(device_t dev, device_t child, 
 		    int type, int rid);
 struct resource_list *pci_get_resource_list (device_t dev, device_t child);
-struct pci_devinfo *pci_read_device(device_t pcib, int d, int b, int s, int f,
-		    size_t size);
+struct pci_devinfo *pci_read_device(device_t pcib, uint32_t d, uint8_t b, uint8_t s, uint8_t f, size_t size);
 void		pci_print_verbose(struct pci_devinfo *dinfo);
 int		pci_freecfg(struct pci_devinfo *dinfo);
 void		pci_child_detached(device_t dev, device_t child);
@@ -151,6 +151,8 @@ struct pci_map *pci_add_bar(device_t dev, int reg, pci_addr_t value,
 struct resource *pci_alloc_multi_resource(device_t dev, device_t child,
 		    int type, int *rid, u_long start, u_long end, u_long count,
 		    u_long num, u_int flags);
+
+void		pci_hotplug_init(device_t dev);
 
 int		pci_iov_attach_method(device_t bus, device_t dev,
 		    struct nvlist *pf_schema, struct nvlist *vf_schema);

@@ -174,7 +174,8 @@ cardbus_attach_card(device_t cbdev)
 {
 	device_t brdev = device_get_parent(cbdev);
 	device_t child;
-	int bus, domain, slot, func;
+	uint32_t domain;
+	uint8_t bus, slot, func;
 	int cardattached = 0;
 	int cardbusfunchigh = 0;
 	struct cardbus_softc *sc;

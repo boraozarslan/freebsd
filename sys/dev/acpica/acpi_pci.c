@@ -83,6 +83,7 @@ static int	acpi_pci_set_powerstate_method(device_t dev, device_t child,
 		    int state);
 static void	acpi_pci_update_device(ACPI_HANDLE handle, device_t pci_child);
 static bus_dma_tag_t acpi_pci_get_dma_tag(device_t bus, device_t child);
+static device_t	acpi_pci_add_child_method(device_t, uint8_t, uint8_t);
 
 #ifdef PCI_IOV
 static device_t	acpi_pci_create_iov_child(device_t bus, device_t pf,
@@ -103,6 +104,7 @@ static device_method_t acpi_pci_methods[] = {
 
 	/* PCI interface */
 	DEVMETHOD(pci_set_powerstate,	acpi_pci_set_powerstate_method),
+	DEVMETHOD(pci_add_child,	acpi_pci_add_child_method),
 #ifdef PCI_IOV
 	DEVMETHOD(pci_create_iov_child,	acpi_pci_create_iov_child),
 #endif
@@ -223,6 +225,14 @@ out:
 	return (error);
 }
 
+static device_t
+acpi_pci_add_child_method(device_t dev, uint8_t s,
+	uint8_t f)
+{
+
+	return pci_add_child_size(dev, s, f, sizeof(struct acpi_pci_devinfo));
+}
+
 static void
 acpi_pci_update_device(ACPI_HANDLE handle, device_t pci_child)
 {
@@ -322,7 +332,7 @@ acpi_pci_attach(device_t dev)
 	 * pci_add_children() doesn't find.  We currently just ignore
 	 * these devices.
 	 */
-	pci_add_children(dev, domain, busno, sizeof(struct acpi_pci_devinfo));
+	pci_add_children(dev);
 	AcpiWalkNamespace(ACPI_TYPE_DEVICE, acpi_get_handle(dev), 1,
 	    acpi_pci_save_handle, NULL, dev, NULL);
 
