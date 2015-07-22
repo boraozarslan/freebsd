@@ -790,12 +790,14 @@ cache_setup(void)
 void
 initarm(struct arm64_bootparams *abp)
 {
+	struct mem_region mem_regions[FDT_MEM_REGIONS];
 	struct efi_map_header *efihdr;
 	struct pcpu *pcpup;
 	vm_offset_t lastaddr;
 	caddr_t kmdp;
 	vm_paddr_t mem_len;
-	int i;
+	uint32_t memsize;
+	int i, mem_regions_sz;
 
 	/* Set the module data location */
 	preload_metadata = (caddr_t)(uintptr_t)(abp->modulep);
@@ -819,7 +821,28 @@ initarm(struct arm64_bootparams *abp)
 	physmap_idx = 0;
 	efihdr = (struct efi_map_header *)preload_search_info(kmdp,
 	    MODINFO_METADATA | MODINFOMD_EFI_MAP);
-	add_efi_map_entries(efihdr, physmap, &physmap_idx);
+	if (efihdr != NULL)
+		add_efi_map_entries(efihdr, physmap, &physmap_idx);
+#ifdef FDT
+	else {
+		fdt_get_mem_regions(mem_regions, &mem_regions_sz, &memsize);
+		mem_regions_sz = MIN(mem_regions_sz, VM_PHYSSEG_MAX - 2);
+
+		for (i = 0; i < mem_regions_sz; i++) {
+			if (mem_regions[i].mr_start == 0) {
+				mem_regions[i].mr_start += PAGE_SIZE;
+				mem_regions[i].mr_size -= PAGE_SIZE;
+			}
+
+			physmap[2 * i] = mem_regions[i].mr_start;
+			physmap[2 * i + 1] = mem_regions[i].mr_start +
+			    mem_regions[i].mr_size;
+		}
+
+		physmap[2 * i] = 0;
+		physmap[2 * i + 1] = 0;
+	}
+#endif
 
 	/* Print the memory map */
 	mem_len = 0;
