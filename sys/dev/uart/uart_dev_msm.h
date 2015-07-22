@@ -79,7 +79,8 @@ enum UART_DM_BITS_PER_CHAR {
 #define	 UART_DM_LOOPBACK			(1 << 7)
 
 /* UART Clock Selection Register, write only */
-#define	UART_DM_CSR				0x08
+//#define	UART_DM_CSR				0x08
+#define	UART_DM_CSR				0xa0
 #define	 UART_DM_CSR_115200			0xff
 #define	 UART_DM_CSR_57600			0xee
 #define	 UART_DM_CSR_38400			0xdd
@@ -98,10 +99,12 @@ enum UART_DM_BITS_PER_CHAR {
 #define	 UART_DM_CSR_75				0x00
 
 /* UART DM TX FIFO Registers - 4, write only */
-#define	UART_DM_TF(x)				(0x70 + (4 * (x)))
+//#define	UART_DM_TF(x)				(0x70 + (4 * (x)))
+#define	UART_DM_TF(x)				(0x100 + (4 * (x)))
 
 /* UART Command Register, write only */
-#define	UART_DM_CR				0x10
+//#define	UART_DM_CR				0x10
+#define	UART_DM_CR				0xa8
 #define	 UART_DM_CR_RX_ENABLE			(1 << 0)
 #define	 UART_DM_CR_RX_DISABLE			(1 << 1)
 #define	 UART_DM_CR_TX_ENABLE			(1 << 2)
@@ -127,7 +130,8 @@ enum UART_DM_BITS_PER_CHAR {
 #define	UART_DM_RESET_TX_DONE			0x810
 
 /* UART Interrupt Mask Register */
-#define	UART_DM_IMR				0x14
+//#define	UART_DM_IMR				0x14
+#define	UART_DM_IMR				0xb0
 /* these can be used for both ISR and IMR registers */
 #define	UART_DM_TXLEV				(1 << 0)
 #define	UART_DM_RXHUNT				(1 << 1)
@@ -173,7 +177,8 @@ enum UART_DM_BITS_PER_CHAR {
 #define	UART_DM_DMRX_DEF_VALUE			0x220
 
 /* Register to enable IRDA function */
-#define	UART_DM_IRDA				0x38
+//#define	UART_DM_IRDA				0x38
+#define	UART_DM_IRDA				0xb8
 
 /* UART Data Mover Enable Register */
 #define	UART_DM_DMEN				0x3c
@@ -188,7 +193,8 @@ enum UART_DM_BITS_PER_CHAR {
 
 /* Read only registers */
 /* UART Status Register */
-#define	UART_DM_SR				0x08
+//#define	UART_DM_SR				0x08
+#define	UART_DM_SR				0xa4
 /* register field mask mapping */
 #define	 UART_DM_SR_RXRDY			(1 << 0)
 #define	 UART_DM_SR_RXFULL			(1 << 1)
@@ -201,16 +207,20 @@ enum UART_DM_BITS_PER_CHAR {
 #define	 UART_DM_RX_BRK_START_LAST		(1 << 8)
 
 /* UART Receive FIFO Registers - 4 in numbers */
-#define	UART_DM_RF(x)				(0x70 + (4 * (x)))
+//#define	UART_DM_RF(x)				(0x70 + (4 * (x)))
+#define	UART_DM_RF(x)				(0x140 + (4 * (x)))
 
 /* UART Masked Interrupt Status Register */
-#define	UART_DM_MISR				0x10
+//#define	UART_DM_MISR				0x10
+#define	UART_DM_MISR				0xac
 
 /* UART Interrupt Status Register */
-#define	UART_DM_ISR				0x14
+//#define	UART_DM_ISR				0x14
+#define	UART_DM_ISR				0xb4
 
 /* Number of characters received since the end of last RX transfer */
-#define	UART_DM_RX_TOTAL_SNAP			0x38
+//#define	UART_DM_RX_TOTAL_SNAP			0x38
+#define	UART_DM_RX_TOTAL_SNAP			0xbc
 
 /* UART TX FIFO Status Register */
 #define	UART_DM_TXFS				0x4c

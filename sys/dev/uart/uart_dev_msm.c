@@ -37,7 +37,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 #include <sys/kdb.h>
 #include <machine/bus.h>
-#include <machine/fdt.h>
 
 #include <dev/uart/uart.h>
 #include <dev/uart/uart_cpu.h>
@@ -151,6 +150,14 @@ msm_init(struct uart_bas *bas, int baudrate, int databits, int stopbits,
     int parity)
 {
 
+	/*
+	 * ARM64TODO: This is broken because:
+	 *  1. It accesses the registers with a 1 byte read/write which
+	 *     resets the SoC.
+	 *  2. It sets the clock incorrectly so the uart prints with the
+	 *     wrong baud.
+	 */
+#if 0
 	if (bas->rclk == 0)
 		bas->rclk = DEF_CLK;
 
@@ -210,6 +217,7 @@ msm_init(struct uart_bas *bas, int baudrate, int databits, int stopbits,
 	uart_setreg(bas, UART_DM_CR, UART_DM_CR_TX_ENABLE);
 
 	uart_barrier(bas);
+#endif
 }
 
 static void
@@ -235,17 +243,19 @@ msm_putc(struct uart_bas *bas, int c)
 	 * If not wait for TX_READY interrupt.
 	 */
 	limit = 1000;
-	if (!(uart_getreg(bas, UART_DM_SR) & UART_DM_SR_TXEMT)) {
-		while ((uart_getreg(bas, UART_DM_ISR) & UART_DM_TX_READY) == 0
+	if (!(GETREG(bas, UART_DM_SR) & UART_DM_SR_TXEMT)) {
+		while ((GETREG(bas, UART_DM_SR) & UART_DM_SR_TXEMT) == 0
 		    && --limit)
 			DELAY(4);
 	}
 	/* FIFO is ready, write number of characters to be written */
-	uart_setreg(bas, UART_DM_NO_CHARS_FOR_TX, 1);
+	SETREG(bas, UART_DM_NO_CHARS_FOR_TX, 1);
 
+#if 0
 	/* Wait till TX FIFO has space */
 	while ((uart_getreg(bas, UART_DM_SR) & UART_DM_SR_TXRDY) == 0)
 		DELAY(4);
+#endif
 
 	/* TX FIFO has space. Write char */
 	SETREG(bas, UART_DM_TF(0), (c & 0xff));
@@ -346,7 +356,7 @@ msm_bus_attach(struct uart_softc *sc)
 	u->ier = UART_DM_IMR_ENABLED;
 
 	/* Configure Interrupt Mask register IMR */
-	uart_setreg(bas, UART_DM_IMR, u->ier);
+	SETREG(bas, UART_DM_IMR, u->ier);
 
 	return (0);
 }
