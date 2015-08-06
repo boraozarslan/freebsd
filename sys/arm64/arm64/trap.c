@@ -119,7 +119,7 @@ cpu_fetch_syscall_args(struct thread *td, struct syscall_args *sa)
 	sa->narg = sa->callp->sy_narg;
 	memcpy(sa->args, ap, nap * sizeof(register_t));
 	if (sa->narg > nap)
-		panic("TODO: Could we have more then 8 args?");
+		panic("ARM64TODO: Could we have more then 8 args?");
 
 	td->td_retval[0] = 0;
 	td->td_retval[1] = 0;
@@ -258,6 +258,10 @@ do_el1h_sync(struct trapframe *frame)
 	    (exception == EXCP_DATA_ABORT && ((esr & ISS_DATA_ISV) == 0)),
 	    ("Invalid instruction length in exception"));
 
+	CTR4(KTR_TRAP,
+	    "do_el1_sync: curthread: %p, esr %lx, elr: %lx, frame: %p",
+	    curthread, esr, frame->tf_elr, frame);
+
 	switch(exception) {
 	case EXCP_FP_SIMD:
 	case EXCP_TRAP_FP:
@@ -301,6 +305,10 @@ do_el0_sync(struct trapframe *frame)
 	esr = READ_SPECIALREG(esr_el1);
 	exception = ESR_ELx_EXCEPTION(esr);
 
+	CTR4(KTR_TRAP,
+	    "do_el0_sync: curthread: %p, esr %lx, elr: %lx, frame: %p",
+	    curthread, esr, frame->tf_elr, frame);
+
 	switch(exception) {
 	case EXCP_FP_SIMD:
 	case EXCP_TRAP_FP:
@@ -311,10 +319,17 @@ do_el0_sync(struct trapframe *frame)
 #endif
 		break;
 	case EXCP_SVC:
+		/*
+		 * Ensure the svc_handler is being run with interrupts enabled.
+		 * They will be automatically restored when returning from
+		 * exception handler.
+		 */
+		intr_enable();
 		svc_handler(frame);
 		break;
 	case EXCP_INSN_ABORT_L:
 	case EXCP_DATA_ABORT_L:
+	case EXCP_DATA_ABORT:
 		data_abort(frame, esr, 1);
 		break;
 	default:
@@ -327,6 +342,6 @@ void
 do_el0_error(struct trapframe *frame)
 {
 
-	panic("do_el0_error");
+	panic("ARM64TODO: do_el0_error");
 }
 

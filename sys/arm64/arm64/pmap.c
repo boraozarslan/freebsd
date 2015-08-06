@@ -428,8 +428,8 @@ pmap_bootstrap_dmap(vm_offset_t l1pt)
 		KASSERT(l1_slot < Ln_ENTRIES, ("Invalid L1 index"));
 
 		pmap_load_store(&l1[l1_slot],
-		    (pa & ~L1_OFFSET) | ATTR_AF | L1_BLOCK |
-		    ATTR_IDX(CACHED_MEMORY));
+		    (pa & ~L1_OFFSET) | ATTR_DEFAULT |
+		    ATTR_IDX(CACHED_MEMORY) | L1_BLOCK);
 	}
 
 	cpu_dcache_wb_range((vm_offset_t)l1, PAGE_SIZE);
@@ -860,8 +860,8 @@ pmap_kenter_device(vm_offset_t sva, vm_size_t size, vm_paddr_t pa)
 	while (size != 0) {
 		l3 = pmap_l3(kernel_pmap, va);
 		KASSERT(l3 != NULL, ("Invalid page table, va: 0x%lx", va));
-		pmap_load_store(l3, (pa & ~L3_OFFSET) | ATTR_AF | L3_PAGE |
-		    ATTR_IDX(DEVICE_MEMORY));
+		pmap_load_store(l3, (pa & ~L3_OFFSET) | ATTR_DEFAULT |
+		    ATTR_IDX(DEVICE_MEMORY) | L3_PAGE);
 		PTE_SYNC(l3);
 
 		va += PAGE_SIZE;
@@ -953,8 +953,8 @@ pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
 	va = sva;
 	for (i = 0; i < count; i++) {
 		m = ma[i];
-		pa = VM_PAGE_TO_PHYS(m) | ATTR_AF |
-		    ATTR_IDX(m->md.pv_memattr) | ATTR_AP(ATTR_AP_RW) | L3_PAGE;
+		pa = VM_PAGE_TO_PHYS(m) | ATTR_DEFAULT | ATTR_AP(ATTR_AP_RW) |
+		    ATTR_IDX(m->md.pv_memattr) | L3_PAGE;
 		l3 = pmap_l3(kernel_pmap, va);
 		pmap_load_store(l3, pa);
 		PTE_SYNC(l3);
@@ -1214,8 +1214,7 @@ _pmap_alloc_l3(pmap_t pmap, vm_pindex_t ptepindex, struct rwlock **lockp)
 
 		l2 = (pd_entry_t *)PHYS_TO_DMAP(*l1 & ~ATTR_MASK);
 		l2 = &l2[ptepindex & Ln_ADDR_MASK];
-		pmap_load_store(l2, VM_PAGE_TO_PHYS(m) | ATTR_AF |
-		    ATTR_IDX(CACHED_MEMORY) | L2_TABLE);
+		pmap_load_store(l2, VM_PAGE_TO_PHYS(m) | L2_TABLE);
 		PTE_SYNC(l2);
 	}
 
@@ -1435,7 +1434,7 @@ static vm_page_t
 reclaim_pv_chunk(pmap_t locked_pmap, struct rwlock **lockp)
 {
 
-	panic("reclaim_pv_chunk");
+	panic("ARM64TODO: reclaim_pv_chunk");
 }
 
 /*
@@ -1907,14 +1906,14 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot,
 	if ((m->oflags & VPO_UNMANAGED) == 0 && !vm_page_xbusied(m))
 		VM_OBJECT_ASSERT_LOCKED(m->object);
 	pa = VM_PAGE_TO_PHYS(m);
-	new_l3 = (pt_entry_t)(pa | ATTR_AF | L3_PAGE);
+	new_l3 = (pt_entry_t)(pa | ATTR_DEFAULT | ATTR_IDX(m->md.pv_memattr) |
+	    L3_PAGE);
 	if ((prot & VM_PROT_WRITE) == 0)
 		new_l3 |= ATTR_AP(ATTR_AP_RO);
 	if ((flags & PMAP_ENTER_WIRED) != 0)
 		new_l3 |= ATTR_SW_WIRED;
 	if ((va >> 63) == 0)
 		new_l3 |= ATTR_AP(ATTR_AP_USER);
-	new_l3 |= ATTR_IDX(m->md.pv_memattr);
 
 	CTR2(KTR_PMAP, "pmap_enter: %.16lx -> %.16lx", va, pa);
 
@@ -2243,7 +2242,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 	 */
 	pmap_resident_count_inc(pmap, 1);
 
-	pa = VM_PAGE_TO_PHYS(m) | ATTR_AF | ATTR_IDX(m->md.pv_memattr) |
+	pa = VM_PAGE_TO_PHYS(m) | ATTR_DEFAULT | ATTR_IDX(m->md.pv_memattr) |
 	    ATTR_AP(ATTR_AP_RW) | L3_PAGE;
 
 	/*
@@ -2440,6 +2439,18 @@ pmap_copy_pages(vm_page_t ma[], vm_offset_t a_offset, vm_page_t mb[],
 		b_offset += cnt;
 		xfersize -= cnt;
 	}
+}
+
+vm_offset_t
+pmap_quick_enter_page(vm_page_t m)
+{
+
+	return (PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m)));
+}
+
+void
+pmap_quick_remove_page(vm_offset_t addr)
+{
 }
 
 /*
@@ -2882,7 +2893,7 @@ retry:
 				 * at all. We need to be able to set it in
 				 * the exception handler.
 				 */
-				panic("TODO: safe_to_clear_referenced\n");
+				panic("ARM64TODO: safe_to_clear_referenced\n");
 			} else if ((pmap_load(l3) & ATTR_SW_WIRED) == 0) {
 				/*
 				 * Wired pages cannot be paged out so
@@ -2950,7 +2961,7 @@ pmap_clear_modify(vm_page_t m)
 	if ((m->aflags & PGA_WRITEABLE) == 0)
 		return;
 
-	/* TODO: We lack support for tracking if a page is modified */
+	/* ARM64TODO: We lack support for tracking if a page is modified */
 }
 
 void *
@@ -2972,7 +2983,17 @@ void
 pmap_page_set_memattr(vm_page_t m, vm_memattr_t ma)
 {
 
-	panic("pmap_page_set_memattr");
+	m->md.pv_memattr = ma;
+
+	/*
+	 * ARM64TODO: Implement the below (from the amd64 pmap)
+	 * If "m" is a normal page, update its direct mapping.  This update
+	 * can be relied upon to perform any cache operations that are
+	 * required for data coherence.
+	 */
+	if ((m->flags & PG_FICTITIOUS) == 0 &&
+	    PHYS_IN_DMAP(VM_PAGE_TO_PHYS(m)))
+		panic("ARM64TODO: pmap_page_set_memattr");
 }
 
 /*
@@ -2982,7 +3003,7 @@ int
 pmap_mincore(pmap_t pmap, vm_offset_t addr, vm_paddr_t *locked_pa)
 {
 
-	panic("pmap_mincore");
+	panic("ARM64TODO: pmap_mincore");
 }
 
 void
@@ -3002,7 +3023,7 @@ void
 pmap_sync_icache(pmap_t pm, vm_offset_t va, vm_size_t sz)
 {
 
-	panic("pmap_sync_icache");
+	panic("ARM64TODO: pmap_sync_icache");
 }
 
 /*
@@ -3086,7 +3107,7 @@ pmap_unmap_io_transient(vm_page_t page[], vm_offset_t vaddr[], int count,
 	for (i = 0; i < count; i++) {
 		paddr = VM_PAGE_TO_PHYS(page[i]);
 		if (paddr >= DMAP_MAX_PHYSADDR) {
-			panic("pmap_unmap_io_transient: TODO: Unmap data");
+			panic("ARM64TODO: pmap_unmap_io_transient: Unmap data");
 		}
 	}
 }

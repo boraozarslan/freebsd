@@ -436,7 +436,7 @@ filt_proc(struct knote *kn, long hint)
 		kn->kn_flags |= EV_EOF | EV_ONESHOT;
 		kn->kn_ptr.p_proc = NULL;
 		if (kn->kn_fflags & NOTE_EXIT)
-			kn->kn_data = p->p_xstat;
+			kn->kn_data = KW_EXITCODE(p->p_xexit, p->p_xsig);
 		if (kn->kn_fflags == 0)
 			kn->kn_flags |= EV_DROP;
 		return (1);
@@ -738,11 +738,11 @@ int
 sys_kqueue(struct thread *td, struct kqueue_args *uap)
 {
 
-	return (kern_kqueue(td, 0));
+	return (kern_kqueue(td, 0, NULL));
 }
 
 int
-kern_kqueue(struct thread *td, int flags)
+kern_kqueue(struct thread *td, int flags, struct filecaps *fcaps)
 {
 	struct filedesc *fdp;
 	struct kqueue *kq;
@@ -760,7 +760,7 @@ kern_kqueue(struct thread *td, int flags)
 	}
 
 	fdp = p->p_fd;
-	error = falloc(td, &fp, &fd, flags);
+	error = falloc_caps(td, &fp, &fd, flags, fcaps);
 	if (error)
 		goto done2;
 

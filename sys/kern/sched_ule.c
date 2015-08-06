@@ -1057,7 +1057,7 @@ tdq_notify(struct tdq *tdq, struct thread *td)
 	 * globally visible before we read tdq_cpu_idle.  Idle thread
 	 * accesses both of them without locks, and the order is important.
 	 */
-	mb();
+	atomic_thread_fence_seq_cst();
 
 	if (TD_IS_IDLETHREAD(ctd)) {
 		/*
@@ -2080,6 +2080,8 @@ sched_fork_thread(struct thread *td, struct thread *child)
 	 */
 	ts = td->td_sched;
 	ts2 = child->td_sched;
+	child->td_oncpu = NOCPU;
+	child->td_lastcpu = NOCPU;
 	child->td_lock = TDQ_LOCKPTR(tdq);
 	child->td_cpuset = cpuset_ref(td->td_cpuset);
 	ts2->ts_cpu = ts->ts_cpu;
@@ -2667,7 +2669,7 @@ sched_idletd(void *dummy)
 		 * before cpu_idle() read tdq_load.  The order is important
 		 * to avoid race with tdq_notify.
 		 */
-		mb();
+		atomic_thread_fence_seq_cst();
 		cpu_idle(switchcnt * 4 > sched_idlespinthresh);
 		tdq->tdq_cpu_idle = 0;
 
@@ -2703,6 +2705,8 @@ sched_throw(struct thread *td)
 		MPASS(td->td_lock == TDQ_LOCKPTR(tdq));
 		tdq_load_rem(tdq, td);
 		lock_profile_release_lock(&TDQ_LOCKPTR(tdq)->lock_object);
+		td->td_lastcpu = td->td_oncpu;
+		td->td_oncpu = NOCPU;
 	}
 	KASSERT(curthread->td_md.md_spinlock_count == 1, ("invalid count"));
 	newtd = choosethread();
