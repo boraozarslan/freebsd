@@ -71,7 +71,7 @@ loader-qcomm.img: loader.bin ${.OBJDIR}/../../../GENERIC/kernel
 	/usr/local/bin/python ${.CURDIR}/mkbootimg \
 	    --kernel ${.OBJDIR}/loader.bin \
 	    --ramdisk ${.OBJDIR}/../../../GENERIC/kernel \
-	    --dt /home/andrew/freebsd/arm64/qualcomm/dt.img \
+	    --dt ${.CURDIR}/dt.img \
 	    --output loader-qcomm.img \
 	    --pagesize 2048 \
 	    --base 0x80000000
