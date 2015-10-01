@@ -68,7 +68,7 @@ loader.bin: loader.sym
 	${OBJCOPY} -S -O binary loader.sym ${.TARGET}
 
 loader-qcomm.img: loader.bin ${.OBJDIR}/../../../GENERIC/kernel
-	/usr/local/bin/python /home/andrew/freebsd/arm64/android/platform_system_core/mkbootimg/mkbootimg \
+	/usr/local/bin/python ${.CURDIR}/mkbootimg \
 	    --kernel ${.OBJDIR}/loader.bin \
 	    --ramdisk ${.OBJDIR}/../../../GENERIC/kernel \
 	    --dt /home/andrew/freebsd/arm64/qualcomm/dt.img \
