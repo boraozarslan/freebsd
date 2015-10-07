@@ -30,6 +30,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_bus.h"
+#include "opt_pciehp.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -3711,7 +3712,9 @@ pci_attach_common(device_t dev)
 #endif
 		sc->sc_dma_tag = bus_get_dma_tag(dev);
 
+#ifdef PCI_EHP
 	pci_hotplug_init(dev);
+#endif
 
 	return (0);
 }
