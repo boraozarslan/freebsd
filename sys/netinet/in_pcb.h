@@ -79,6 +79,8 @@ struct in_addr_4in6 {
 /*
  * NOTE: ipv6 addrs should be 64-bit aligned, per RFC 2553.  in_conninfo has
  * some extra padding to accomplish this.
+ * NOTE 2: tcp_syncache.c uses first 5 32-bit words, which identify fport,
+ * lport, faddr to generate hash, so these fields shouldn't be moved.
  */
 struct in_endpoints {
 	u_int16_t	ie_fport;		/* foreign port */
@@ -491,6 +493,7 @@ short	inp_so_options(const struct inpcb *inp);
 #define INP_INFO_TRY_RLOCK(ipi)	rw_try_rlock(&(ipi)->ipi_lock)
 #define INP_INFO_TRY_WLOCK(ipi)	rw_try_wlock(&(ipi)->ipi_lock)
 #define INP_INFO_TRY_UPGRADE(ipi)	rw_try_upgrade(&(ipi)->ipi_lock)
+#define INP_INFO_WLOCKED(ipi)	rw_wowned(&(ipi)->ipi_lock)
 #define INP_INFO_RUNLOCK(ipi)	rw_runlock(&(ipi)->ipi_lock)
 #define INP_INFO_WUNLOCK(ipi)	rw_wunlock(&(ipi)->ipi_lock)
 #define	INP_INFO_LOCK_ASSERT(ipi)	rw_assert(&(ipi)->ipi_lock, RA_LOCKED)
