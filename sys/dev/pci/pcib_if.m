@@ -97,7 +97,7 @@ METHOD void write_config {
 };
 
 #
-# Route an interrupt.  Returns a value suitable for stuffing into 
+# Route an interrupt.  Returns a value suitable for stuffing into
 # a device's interrupt register.
 #
 METHOD int route_interrupt {
