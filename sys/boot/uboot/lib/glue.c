@@ -43,14 +43,18 @@ __FBSDID("$FreeBSD$");
 /* Some random address used by U-Boot. */
 extern long uboot_address;
 
-static int
-valid_sig(struct api_signature *sig)
+int
+api_valid_sig(struct api_signature *sig)
 {
 	uint32_t checksum;
 	struct api_signature s;
 
 	if (sig == NULL)
 		return (0);
+
+	if (bcmp(sig, API_SIG_MAGIC, API_SIG_MAGLEN) != 0)
+		return (0);
+
 	/*
 	 * Clear the checksum field (in the local copy) so as to calculate the
 	 * CRC with the same initial contents as at the time when the sig was
@@ -86,10 +90,9 @@ api_search_sig(struct api_signature **sig)
 	sp = (void *)(uboot_address & ~0x000fffff);
 	spend = sp + 0x00300000 - API_SIG_MAGLEN;
 	while (sp < spend) {
-		if (!bcmp(sp, API_SIG_MAGIC, API_SIG_MAGLEN)) {
+		if (api_valid_sig((struct api_signature *)sp)) {
 			*sig = (struct api_signature *)sp;
-			if (valid_sig(*sig))
-				return (1);
+			return (1);
 		}
 		sp += API_SIG_MAGLEN;
 	}

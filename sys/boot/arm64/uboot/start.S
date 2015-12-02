@@ -1,6 +1,5 @@
 /*-
- * Copyright (C) 2000 Benno Rice.
- * Copyright (C) 2007 Semihalf, Rafal Jaworowski <raj@semihalf.com>
+ * Copyright (c) 2014 Andrew Turner
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,52 +26,65 @@
  * $FreeBSD$
  */
 
-struct uboot_devdesc
-{
-	struct devsw	*d_dev;
-	int		d_type;
-	int		d_unit;
-	void		*d_opendata;
-	union {
-		struct {
-			int	slice;
-			int	partition;
-			off_t	offset;
-		} disk;
-	} d_kind;
-};
+#include <machine/asm.h>
 
-#define d_disk d_kind.disk
+	.text
+ENTRY(_start)
+	/* Save the boot params to the stack */
+	stp	x0, x1, [sp, #-16]!
+
+	/* Self relocate */
+	adr	x0, ImageBase
+	adr	x1, _DYNAMIC
+	bl	self_reloc
+
+	/* Hint where to look for the API signature */
+	ldr	x8, =uboot_address
+	mov	x9, sp
+	str	x9, [x8]
+
+	/* Save x18, it's used by U-Boot */
+	ldr	x8, =saved_regs
+	str	x18, [x8, #0]
+
+	ldp	x0, x1, [sp], #16
+
+	/* Tail-recurse to main */
+	b	main
+END(_start)
 
 /*
- * Default network packet alignment in memory
+ * syscall()
  */
-#define	PKTALIGN	32
+ENTRY(syscall)
+	str	x18, [sp, #-32]!
+	stp	x29, x30, [sp, #16]
 
-int uboot_getdev(void **vdev, const char *devspec, const char **path);
-char *uboot_fmtdev(void *vdev);
-int uboot_setcurrdev(struct env_var *ev, int flags, const void *value);
+	/* Restore the U-Boot x18 */
+	ldr	x9, =saved_regs
+	ldr	x18, [x9]
 
-extern int devs_no;
-extern struct netif_driver uboot_net;
-extern struct devsw uboot_storage;
+	ldr	lr, =return_from_syscall
+	ldr	x9, =syscall_ptr
+	ldr	x9, [x9]
+	br	x9
 
-extern uintptr_t uboot_heap_start;
-extern uintptr_t uboot_heap_end;
+return_from_syscall:
+	ldp	x29, x30, [sp, #16]
+	ldr	x18, [sp], #32
+	ret
+END(syscall)
 
-uint64_t uboot_loadaddr(u_int type, void *data, uint64_t addr);
-ssize_t	uboot_copyin(const void *src, vm_offset_t dest, const size_t len);
-ssize_t	uboot_copyout(const vm_offset_t src, void *dest, const size_t len);
-ssize_t	uboot_readin(const int fd, vm_offset_t dest, const size_t len);
-extern int uboot_autoload(void);
-void *uboot_translate(vm_offset_t ptr);
+	.data
+	.align	8
 
-struct preloaded_file;
-struct file_format;
+	.globl	syscall_ptr
+syscall_ptr:
+	.quad	0
 
-extern struct file_format uboot_elf;
+	.globl	uboot_address
+uboot_address:
+	.quad	0
 
-void reboot(void);
-
-int uboot_diskgetunit(int type, int type_unit);
-
+saved_regs:
+	.quad	0	/* U-Boot x18 */

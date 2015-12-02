@@ -70,8 +70,10 @@ extern char bootprog_maker[];
 extern unsigned char _etext[];
 extern unsigned char _edata[];
 extern unsigned char __bss_start[];
+#ifndef __aarch64__
 extern unsigned char __sbss_start[];
 extern unsigned char __sbss_end[];
+#endif
 extern unsigned char _end[];
 
 #ifdef LOADER_FDT_SUPPORT
@@ -96,8 +98,10 @@ dump_addr_info(void)
 	printf("\naddresses info:\n");
 	printf(" _etext (sdata) = 0x%08x\n", (uint32_t)_etext);
 	printf(" _edata         = 0x%08x\n", (uint32_t)_edata);
+#ifndef __aarch64__
 	printf(" __sbss_start   = 0x%08x\n", (uint32_t)__sbss_start);
 	printf(" __sbss_end     = 0x%08x\n", (uint32_t)__sbss_end);
+#endif
 	printf(" __sbss_start   = 0x%08x\n", (uint32_t)__bss_start);
 	printf(" _end           = 0x%08x\n", (uint32_t)_end);
 	printf(" syscall entry  = 0x%08x\n", (uint32_t)syscall_ptr);
@@ -387,12 +391,19 @@ probe_disks(int devidx, int load_type, int load_unit, int load_slice,
 }
 
 int
-main(void)
+main(int argc, char *argv[])
 {
 	struct api_signature *sig = NULL;
 	int load_type, load_unit, load_slice, load_partition;
 	int i;
 	const char *ldev;
+
+	if (argc >= 3 && strcmp(argv[1], "-a") == 0) {
+		sig = (void *)strtoul(argv[2], NULL, 16);
+		if (!api_valid_sig(sig))
+			return (0x00badab1);
+	} else
+		return (0x55badab1);
 
 	/*
 	 * If we can't find the magic signature and related info, exit with a
@@ -400,7 +411,7 @@ main(void)
 	 * rc = 0xnnbadab1". Hopefully 'badab1' looks enough like "bad api" to
 	 * provide a clue. It's better than 0xffffffff anyway.
 	 */
-	if (!api_search_sig(&sig))
+	if (sig == NULL && !api_search_sig(&sig))
 		return (0x01badab1);
 
 	syscall_ptr = sig->syscall;
@@ -410,8 +421,10 @@ main(void)
 	if (sig->version > API_SIG_VERSION)
 		return (0x03badab1);
 
-        /* Clear BSS sections */
+        /* Clear BSS sections. arm64 places both within the bss. */
+#ifndef __aarch64__
 	bzero(__sbss_start, __sbss_end - __sbss_start);
+#endif
 	bzero(__bss_start, _end - __bss_start);
 
 	/*

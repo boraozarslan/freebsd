@@ -39,6 +39,7 @@ int syscall(int, int *, ...);
 void *syscall_ptr;
 
 int api_search_sig(struct api_signature **sig);
+int api_valid_sig(struct api_signature *sig);
 
 #define	UB_MAX_MR	16		/* max mem regions number */
 #define	UB_MAX_DEV	6		/* max devices number */

@@ -53,6 +53,9 @@ __FBSDID("$FreeBSD$");
 
 extern void _start(void); /* ubldr entry point address. */
 
+int kernel_offset_set = 0;
+static ssize_t kernel_offset;
+
 /*
  * This is called for every object loaded (kernel, module, dtb file, etc).  The
  * expected return value is the next address at or after the given addr which is
@@ -68,6 +71,13 @@ extern void _start(void); /* ubldr entry point address. */
 uint64_t
 uboot_loadaddr(u_int type, void *data, uint64_t addr)
 {
+
+	return roundup2(addr, PAGE_SIZE);
+}
+
+static void
+uboot_stage_init(vm_offset_t addr)
+{
 	struct sys_info *si;
 	uintptr_t sblock, eblock, subldr, eubldr;
 	uintptr_t biggest_block, this_block;
@@ -75,16 +85,16 @@ uboot_loadaddr(u_int type, void *data, uint64_t addr)
 	int i;
 	char * envstr;
 
-	if (addr == 0) {
-		/*
-		 * If the loader_kernaddr environment variable is set, blindly
-		 * honor it.  It had better be right.  We force interpretation
-		 * of the value in base-16 regardless of any leading 0x prefix,
-		 * because that's the U-Boot convention.
-		 */
-		envstr = ub_env_get("loader_kernaddr");
-		if (envstr != NULL)
-			return (strtoul(envstr, NULL, 16));
+	/*
+	 * If the loader_kernaddr environment variable is set, blindly
+	 * honor it.  It had better be right.  We force interpretation
+	 * of the value in base-16 regardless of any leading 0x prefix,
+	 * because that's the U-Boot convention.
+	 */
+	envstr = ub_env_get("loader_kernaddr");
+	if (envstr != NULL) {
+		biggest_block = strtoul(envstr, NULL, 16);
+	} else {
 
 		/*
 		 *  Find addr/size of largest DRAM block.  Carve our own address
@@ -134,31 +144,43 @@ uboot_loadaddr(u_int type, void *data, uint64_t addr)
 		if (biggest_size == 0)
 			panic("Not enough DRAM to load kernel\n");
 #if 0
-		printf("Loading kernel into region 0x%08x-0x%08x (%u MiB)\n",
+		printf("Loading kernel into region 0x%016lx-0x%016lx (%lu MiB)\n",
 		    biggest_block, biggest_block + biggest_size - 1, 
 		    biggest_size / 1024 / 1024);
 #endif
-		return (biggest_block);
 	}
-	return roundup2(addr, PAGE_SIZE);
+
+	biggest_block = roundup2(biggest_block, 2 * 1024 * 1024);
+	kernel_offset = biggest_block - addr;
+	kernel_offset_set = 1;
+}
+
+void *
+uboot_translate(vm_offset_t ptr)
+{
+
+	return (void *)(ptr + kernel_offset);
 }
 
 ssize_t
 uboot_copyin(const void *src, vm_offset_t dest, const size_t len)
 {
-	bcopy(src, (void *)dest, len);
+	if (!kernel_offset_set)
+		uboot_stage_init(dest);
+
+	bcopy(src, (void *)(dest + kernel_offset), len);
 	return (len);
 }
 
 ssize_t
 uboot_copyout(const vm_offset_t src, void *dest, const size_t len)
 {
-	bcopy((void *)src, dest, len);
+	bcopy((void *)(src + kernel_offset), dest, len);
 	return (len);
 }
 
 ssize_t
 uboot_readin(const int fd, vm_offset_t dest, const size_t len)
 {
-	return (read(fd, (void *)dest, len));
+	return (read(fd, (void *)(dest + kernel_offset), len));
 }

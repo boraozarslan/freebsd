@@ -198,10 +198,8 @@ __elfN(loadfile_raw)(char *filename, u_int64_t dest,
 	 * leave dest set to the value calculated by archsw.arch_loadaddr() and
 	 * passed in to this function.
 	 */
-#ifndef __arm__
         if (ehdr->e_type == ET_EXEC)
 	    dest = (ehdr->e_entry & ~PAGE_MASK);
-#endif
 	if ((ehdr->e_entry & ~PAGE_MASK) == 0) {
 	    printf("elf" __XSTRING(__ELF_WORD_SIZE) "_loadfile: not a kernel (maybe static binary?)\n");
 	    err = EPERM;

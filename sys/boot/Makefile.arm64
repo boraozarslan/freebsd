@@ -4,4 +4,4 @@
 SUBDIR+=		fdt
 .endif
 
-SUBDIR+=		efi
+SUBDIR+=		efi uboot
