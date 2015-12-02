@@ -94,6 +94,9 @@ vm_map_t pipe_map;
 const void *zero_region;
 CTASSERT((ZERO_REGION_SIZE & PAGE_MASK) == 0);
 
+/* NB: Used by kernel debuggers. */
+const u_long vm_maxuser_address = VM_MAXUSER_ADDRESS;
+
 SYSCTL_ULONG(_vm, OID_AUTO, min_kernel_address, CTLFLAG_RD,
     SYSCTL_NULL_ULONG_PTR, VM_MIN_KERNEL_ADDRESS, "Min kernel address");
 
@@ -386,7 +389,7 @@ kmem_unback(vm_object_t object, vm_offset_t addr, vm_size_t size)
 	VM_OBJECT_WLOCK(object);
 	for (i = 0; i < size; i += PAGE_SIZE) {
 		m = vm_page_lookup(object, OFF_TO_IDX(offset + i));
-		vm_page_unwire(m, PQ_INACTIVE);
+		vm_page_unwire(m, PQ_NONE);
 		vm_page_free(m);
 	}
 	VM_OBJECT_WUNLOCK(object);

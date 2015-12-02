@@ -13,6 +13,7 @@ FILES=	\
 	bsd.README \
 	bsd.arch.inc.mk \
 	bsd.compiler.mk \
+	bsd.confs.mk \
 	bsd.cpu.mk \
 	bsd.crunchgen.mk \
 	bsd.dep.mk \
@@ -57,7 +58,6 @@ FILES=	\
 	sys.dependfile.mk \
 	version_gen.awk
 
-NO_OBJ=
 FILESDIR=	${BINDIR}/mk
 
 .if ${MK_TESTS} != "no"

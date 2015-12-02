@@ -781,9 +781,9 @@ alloc:
 	msg->hdr.nexus.targ_lun = lun->lun;
 	msg->hdr.nexus.targ_mapped_lun = lun->lun;
 	msg->lun.flags = lun->flags;
-	msg->lun.pr_generation = lun->PRGeneration;
+	msg->lun.pr_generation = lun->pr_generation;
 	msg->lun.pr_res_idx = lun->pr_res_idx;
-	msg->lun.pr_res_type = lun->res_type;
+	msg->lun.pr_res_type = lun->pr_res_type;
 	msg->lun.pr_key_count = lun->pr_key_count;
 	i = 0;
 	if (lun->lun_devid) {
@@ -927,6 +927,11 @@ ctl_isc_announce_mode(struct ctl_lun *lun, uint32_t initidx,
 	}
 	if (i == CTL_NUM_MODE_PAGES)
 		return;
+
+	/* Don't try to replicate pages not present on this device. */
+	if (lun->mode_pages.index[i].page_data == NULL)
+		return;
+
 	bzero(&msg.mode, sizeof(msg.mode));
 	msg.hdr.msg_type = CTL_MSG_MODE_SYNC;
 	msg.hdr.nexus.targ_port = initidx / CTL_MAX_INIT_PER_PORT;
@@ -1085,9 +1090,9 @@ ctl_isc_lun_sync(struct ctl_softc *softc, union ctl_ha_msg *msg, int len)
 		/* If peer is primary and we are not -- use data */
 		if ((lun->flags & CTL_LUN_PRIMARY_SC) == 0 &&
 		    (lun->flags & CTL_LUN_PEER_SC_PRIMARY)) {
-			lun->PRGeneration = msg->lun.pr_generation;
+			lun->pr_generation = msg->lun.pr_generation;
 			lun->pr_res_idx = msg->lun.pr_res_idx;
-			lun->res_type = msg->lun.pr_res_type;
+			lun->pr_res_type = msg->lun.pr_res_type;
 			lun->pr_key_count = msg->lun.pr_key_count;
 			for (k = 0; k < CTL_MAX_INITIATORS; k++)
 				ctl_clr_prkey(lun, k);
@@ -1814,13 +1819,13 @@ ctl_init(void)
 	SYSCTL_ADD_INT(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
 	    OID_AUTO, "ha_id", CTLFLAG_RDTUN, &softc->ha_id, 0,
 	    "HA head ID (0 - no HA)");
-	if (softc->ha_id == 0 || softc->ha_id > NUM_TARGET_PORT_GROUPS) {
+	if (softc->ha_id == 0 || softc->ha_id > NUM_HA_SHELVES) {
 		softc->flags |= CTL_FLAG_ACTIVE_SHELF;
 		softc->is_single = 1;
 		softc->port_cnt = CTL_MAX_PORTS;
 		softc->port_min = 0;
 	} else {
-		softc->port_cnt = CTL_MAX_PORTS / NUM_TARGET_PORT_GROUPS;
+		softc->port_cnt = CTL_MAX_PORTS / NUM_HA_SHELVES;
 		softc->port_min = (softc->ha_id - 1) * softc->port_cnt;
 	}
 	softc->port_max = softc->port_min + softc->port_cnt;
@@ -3533,6 +3538,67 @@ ctl_lun_map_to_port(struct ctl_port *port, uint32_t lun_id)
 	return (UINT32_MAX);
 }
 
+uint32_t
+ctl_decode_lun(uint64_t encoded)
+{
+	uint8_t lun[8];
+	uint32_t result = 0xffffffff;
+
+	be64enc(lun, encoded);
+	switch (lun[0] & RPL_LUNDATA_ATYP_MASK) {
+	case RPL_LUNDATA_ATYP_PERIPH:
+		if ((lun[0] & 0x3f) == 0 && lun[2] == 0 && lun[3] == 0 &&
+		    lun[4] == 0 && lun[5] == 0 && lun[6] == 0 && lun[7] == 0)
+			result = lun[1];
+		break;
+	case RPL_LUNDATA_ATYP_FLAT:
+		if (lun[2] == 0 && lun[3] == 0 && lun[4] == 0 && lun[5] == 0 &&
+		    lun[6] == 0 && lun[7] == 0)
+			result = ((lun[0] & 0x3f) << 8) + lun[1];
+		break;
+	case RPL_LUNDATA_ATYP_EXTLUN:
+		switch (lun[0] & RPL_LUNDATA_EXT_EAM_MASK) {
+		case 0x02:
+			switch (lun[0] & RPL_LUNDATA_EXT_LEN_MASK) {
+			case 0x00:
+				result = lun[1];
+				break;
+			case 0x10:
+				result = (lun[1] << 16) + (lun[2] << 8) +
+				    lun[3];
+				break;
+			case 0x20:
+				if (lun[1] == 0 && lun[6] == 0 && lun[7] == 0)
+					result = (lun[2] << 24) +
+					    (lun[3] << 16) + (lun[4] << 8) +
+					    lun[5];
+				break;
+			}
+			break;
+		case RPL_LUNDATA_EXT_EAM_NOT_SPEC:
+			result = 0xffffffff;
+			break;
+		}
+		break;
+	}
+	return (result);
+}
+
+uint64_t
+ctl_encode_lun(uint32_t decoded)
+{
+	uint64_t l = decoded;
+
+	if (l <= 0xff)
+		return (((uint64_t)RPL_LUNDATA_ATYP_PERIPH << 56) | (l << 48));
+	if (l <= 0x3fff)
+		return (((uint64_t)RPL_LUNDATA_ATYP_FLAT << 56) | (l << 48));
+	if (l <= 0xffffff)
+		return (((uint64_t)(RPL_LUNDATA_ATYP_EXTLUN | 0x12) << 56) |
+		    (l << 32));
+	return ((((uint64_t)RPL_LUNDATA_ATYP_EXTLUN | 0x22) << 56) | (l << 16));
+}
+
 static struct ctl_port *
 ctl_io_port(struct ctl_io_hdr *io_hdr)
 {
@@ -3810,7 +3876,7 @@ ctl_expand_number(const char *buf, uint64_t *num)
 static int
 ctl_init_page_index(struct ctl_lun *lun)
 {
-	int i;
+	int i, page_code;
 	struct ctl_page_index *page_index;
 	const char *value;
 	uint64_t ival;
@@ -3831,10 +3897,12 @@ ctl_init_page_index(struct ctl_lun *lun)
 		    (page_index->page_flags & CTL_PAGE_FLAG_CDROM) == 0)
 			continue;
 
-		switch (page_index->page_code & SMPH_PC_MASK) {
+		page_code = page_index->page_code & SMPH_PC_MASK;
+		switch (page_code) {
 		case SMS_RW_ERROR_RECOVERY_PAGE: {
-			if (page_index->subpage != SMS_SUBPAGE_PAGE_0)
-				panic("subpage is incorrect!");
+			KASSERT(page_index->subpage == SMS_SUBPAGE_PAGE_0,
+			    ("subpage %#x for page %#x is incorrect!",
+			    page_index->subpage, page_code));
 			memcpy(&lun->mode_pages.rw_er_page[CTL_PAGE_CURRENT],
 			       &rw_er_page_default,
 			       sizeof(rw_er_page_default));
@@ -3854,8 +3922,9 @@ ctl_init_page_index(struct ctl_lun *lun)
 		case SMS_FORMAT_DEVICE_PAGE: {
 			struct scsi_format_page *format_page;
 
-			if (page_index->subpage != SMS_SUBPAGE_PAGE_0)
-				panic("subpage is incorrect!");
+			KASSERT(page_index->subpage == SMS_SUBPAGE_PAGE_0,
+			    ("subpage %#x for page %#x is incorrect!",
+			    page_index->subpage, page_code));
 
 			/*
 			 * Sectors per track are set above.  Bytes per
@@ -3901,9 +3970,9 @@ ctl_init_page_index(struct ctl_lun *lun)
 			int shift;
 #endif /* !__XSCALE__ */
 
-			if (page_index->subpage != SMS_SUBPAGE_PAGE_0)
-				panic("invalid subpage value %d",
-				      page_index->subpage);
+			KASSERT(page_index->subpage == SMS_SUBPAGE_PAGE_0,
+			    ("subpage %#x for page %#x is incorrect!",
+			    page_index->subpage, page_code));
 
 			/*
 			 * Rotation rate and sectors per track are set
@@ -3981,9 +4050,9 @@ ctl_init_page_index(struct ctl_lun *lun)
 		case SMS_CACHING_PAGE: {
 			struct scsi_caching_page *caching_page;
 
-			if (page_index->subpage != SMS_SUBPAGE_PAGE_0)
-				panic("invalid subpage value %d",
-				      page_index->subpage);
+			KASSERT(page_index->subpage == SMS_SUBPAGE_PAGE_0,
+			    ("subpage %#x for page %#x is incorrect!",
+			    page_index->subpage, page_code));
 			memcpy(&lun->mode_pages.caching_page[CTL_PAGE_DEFAULT],
 			       &caching_page_default,
 			       sizeof(caching_page_default));
@@ -4066,6 +4135,9 @@ ctl_init_page_index(struct ctl_lun *lun)
 				page_index->page_data =
 				    (uint8_t *)lun->mode_pages.control_ext_page;
 				break;
+			default:
+				panic("subpage %#x for page %#x is incorrect!",
+				      page_index->subpage, page_code);
 			}
 			break;
 		}
@@ -4157,10 +4229,18 @@ ctl_init_page_index(struct ctl_lun *lun)
 				       sizeof(lbp_page_default));
 				page_index->page_data =
 					(uint8_t *)lun->mode_pages.lbp_page;
-			}}
+				break;
+			}
+			default:
+				panic("subpage %#x for page %#x is incorrect!",
+				      page_index->subpage, page_code);
+			}
 			break;
 		}
 		case SMS_CDDVD_CAPS_PAGE:{
+			KASSERT(page_index->subpage == SMS_SUBPAGE_PAGE_0,
+			    ("subpage %#x for page %#x is incorrect!",
+			    page_index->subpage, page_code));
 			memcpy(&lun->mode_pages.cddvd_page[CTL_PAGE_DEFAULT],
 			       &cddvd_page_default,
 			       sizeof(cddvd_page_default));
@@ -4201,17 +4281,14 @@ ctl_init_page_index(struct ctl_lun *lun)
 				break;
 			}
 			default:
-				panic("invalid subpage value %d",
-				      page_index->subpage);
-				break;
+				panic("subpage %#x for page %#x is incorrect!",
+				      page_index->subpage, page_code);
 			}
-   			break;
+			break;
 		}
 		default:
-			panic("invalid page value %d",
-			      page_index->page_code & SMPH_PC_MASK);
-			break;
-    	}
+			panic("invalid page code value %#x", page_code);
+		}
 	}
 
 	return (CTL_RETVAL_COMPLETE);
@@ -5101,6 +5178,13 @@ ctl_scsi_reserve(struct ctl_scsiio *ctsio)
 		ctl_set_reservation_conflict(ctsio);
 		goto bailout;
 	}
+
+	/* SPC-3 exceptions to SPC-2 RESERVE and RELEASE behavior. */
+	if (lun->flags & CTL_LUN_PR_RESERVED) {
+		ctl_set_success(ctsio);
+		goto bailout;
+	}
+
 	lun->flags |= CTL_LUN_RESERVED;
 	lun->res_idx = residx;
 	ctl_set_success(ctsio);
@@ -5130,7 +5214,7 @@ ctl_start_stop(struct ctl_scsiio *ctsio)
 
 			residx = ctl_get_initindex(&ctsio->io_hdr.nexus);
 			if (ctl_get_prkey(lun, residx) == 0 ||
-			    (lun->pr_res_idx != residx && lun->res_type < 4)) {
+			    (lun->pr_res_idx != residx && lun->pr_res_type < 4)) {
 
 				ctl_set_reservation_conflict(ctsio);
 				ctl_done((union ctl_io *)ctsio);
@@ -6216,8 +6300,7 @@ ctl_mode_select(struct ctl_scsiio *ctsio)
 		break;
 	}
 	default:
-		panic("Invalid CDB type %#x", ctsio->cdb[0]);
-		break;
+		panic("%s: Invalid CDB type %#x", __func__, ctsio->cdb[0]);
 	}
 
 	if (param_len < (header_size + bd_len)) {
@@ -6480,8 +6563,7 @@ ctl_mode_sense(struct ctl_scsiio *ctsio)
 		break;
 	}
 	default:
-		panic("invalid CDB type %#x", ctsio->cdb[0]);
-		break; /* NOTREACHED */
+		panic("%s: Invalid CDB type %#x", __func__, ctsio->cdb[0]);
 	}
 
 	/*
@@ -7055,8 +7137,8 @@ ctl_report_tagret_port_groups(struct ctl_scsiio *ctsio)
 {
 	struct scsi_maintenance_in *cdb;
 	int retval;
-	int alloc_len, ext, total_len = 0, g, pc, pg, gs, os;
-	int num_target_port_groups, num_target_ports;
+	int alloc_len, ext, total_len = 0, g, pc, pg, ts, os;
+	int num_ha_groups, num_target_ports, shared_group;
 	struct ctl_lun *lun;
 	struct ctl_softc *softc;
 	struct ctl_port *port;
@@ -7090,11 +7172,8 @@ ctl_report_tagret_port_groups(struct ctl_scsiio *ctsio)
 		return(retval);
 	}
 
-	if (softc->is_single)
-		num_target_port_groups = 1;
-	else
-		num_target_port_groups = NUM_TARGET_PORT_GROUPS;
 	num_target_ports = 0;
+	shared_group = (softc->is_single != 0);
 	mtx_lock(&softc->ctl_lock);
 	STAILQ_FOREACH(port, &softc->port_list, links) {
 		if ((port->status & CTL_PORT_STATUS_ONLINE) == 0)
@@ -7102,15 +7181,18 @@ ctl_report_tagret_port_groups(struct ctl_scsiio *ctsio)
 		if (ctl_lun_map_to_port(port, lun->lun) >= CTL_MAX_LUNS)
 			continue;
 		num_target_ports++;
+		if (port->status & CTL_PORT_STATUS_HA_SHARED)
+			shared_group = 1;
 	}
 	mtx_unlock(&softc->ctl_lock);
+	num_ha_groups = (softc->is_single) ? 0 : NUM_HA_SHELVES;
 
 	if (ext)
 		total_len = sizeof(struct scsi_target_group_data_extended);
 	else
 		total_len = sizeof(struct scsi_target_group_data);
 	total_len += sizeof(struct scsi_target_port_group_descriptor) *
-		num_target_port_groups +
+		(shared_group + num_ha_groups) +
 	    sizeof(struct scsi_target_port_descriptor) * num_target_ports;
 
 	alloc_len = scsi_4btoul(cdb->length);
@@ -7147,24 +7229,62 @@ ctl_report_tagret_port_groups(struct ctl_scsiio *ctsio)
 
 	mtx_lock(&softc->ctl_lock);
 	pg = softc->port_min / softc->port_cnt;
-	if (softc->ha_link == CTL_HA_LINK_OFFLINE)
-		gs = TPG_ASYMMETRIC_ACCESS_UNAVAILABLE;
-	else if (softc->ha_link == CTL_HA_LINK_UNKNOWN)
-		gs = TPG_ASYMMETRIC_ACCESS_TRANSITIONING;
-	else if (softc->ha_mode == CTL_HA_MODE_ACT_STBY)
-		gs = TPG_ASYMMETRIC_ACCESS_STANDBY;
-	else
-		gs = TPG_ASYMMETRIC_ACCESS_NONOPTIMIZED;
-	if (lun->flags & CTL_LUN_PRIMARY_SC) {
-		os = gs;
-		gs = TPG_ASYMMETRIC_ACCESS_OPTIMIZED;
-	} else
-		os = TPG_ASYMMETRIC_ACCESS_OPTIMIZED;
-	for (g = 0; g < num_target_port_groups; g++) {
-		tpg_desc->pref_state = (g == pg) ? gs : os;
+	if (lun->flags & (CTL_LUN_PRIMARY_SC | CTL_LUN_PEER_SC_PRIMARY)) {
+		/* Some shelf is known to be primary. */
+		if (softc->ha_link == CTL_HA_LINK_OFFLINE)
+			os = TPG_ASYMMETRIC_ACCESS_UNAVAILABLE;
+		else if (softc->ha_link == CTL_HA_LINK_UNKNOWN)
+			os = TPG_ASYMMETRIC_ACCESS_TRANSITIONING;
+		else if (softc->ha_mode == CTL_HA_MODE_ACT_STBY)
+			os = TPG_ASYMMETRIC_ACCESS_STANDBY;
+		else
+			os = TPG_ASYMMETRIC_ACCESS_NONOPTIMIZED;
+		if (lun->flags & CTL_LUN_PRIMARY_SC) {
+			ts = TPG_ASYMMETRIC_ACCESS_OPTIMIZED;
+		} else {
+			ts = os;
+			os = TPG_ASYMMETRIC_ACCESS_OPTIMIZED;
+		}
+	} else {
+		/* No known primary shelf. */
+		if (softc->ha_link == CTL_HA_LINK_OFFLINE) {
+			ts = TPG_ASYMMETRIC_ACCESS_UNAVAILABLE;
+			os = TPG_ASYMMETRIC_ACCESS_OPTIMIZED;
+		} else if (softc->ha_link == CTL_HA_LINK_UNKNOWN) {
+			ts = TPG_ASYMMETRIC_ACCESS_TRANSITIONING;
+			os = TPG_ASYMMETRIC_ACCESS_OPTIMIZED;
+		} else {
+			ts = os = TPG_ASYMMETRIC_ACCESS_TRANSITIONING;
+		}
+	}
+	if (shared_group) {
+		tpg_desc->pref_state = ts;
 		tpg_desc->support = TPG_AO_SUP | TPG_AN_SUP | TPG_S_SUP |
 		    TPG_U_SUP | TPG_T_SUP;
-		scsi_ulto2b(g + 1, tpg_desc->target_port_group);
+		scsi_ulto2b(1, tpg_desc->target_port_group);
+		tpg_desc->status = TPG_IMPLICIT;
+		pc = 0;
+		STAILQ_FOREACH(port, &softc->port_list, links) {
+			if ((port->status & CTL_PORT_STATUS_ONLINE) == 0)
+				continue;
+			if (!softc->is_single &&
+			    (port->status & CTL_PORT_STATUS_HA_SHARED) == 0)
+				continue;
+			if (ctl_lun_map_to_port(port, lun->lun) >= CTL_MAX_LUNS)
+				continue;
+			scsi_ulto2b(port->targ_port, tpg_desc->descriptors[pc].
+			    relative_target_port_identifier);
+			pc++;
+		}
+		tpg_desc->target_port_count = pc;
+		tpg_desc = (struct scsi_target_port_group_descriptor *)
+		    &tpg_desc->descriptors[pc];
+	}
+	for (g = 0; g < num_ha_groups; g++) {
+		tpg_desc->pref_state = (g == pg) ? ts : os;
+		tpg_desc->support = TPG_AO_SUP | TPG_AN_SUP | TPG_S_SUP |
+		    TPG_U_SUP | TPG_T_SUP;
+		scsi_ulto2b(2 + g, tpg_desc->target_port_group);
 		tpg_desc->status = TPG_IMPLICIT;
 		pc = 0;
 		STAILQ_FOREACH(port, &softc->port_list, links) {
@@ -7172,6 +7292,8 @@ ctl_report_tagret_port_groups(struct ctl_scsiio *ctsio)
 			    port->targ_port >= (g + 1) * softc->port_cnt)
 				continue;
 			if ((port->status & CTL_PORT_STATUS_ONLINE) == 0)
+				continue;
+			if (port->status & CTL_PORT_STATUS_HA_SHARED)
 				continue;
 			if (ctl_lun_map_to_port(port, lun->lun) >= CTL_MAX_LUNS)
 				continue;
@@ -7495,7 +7617,7 @@ retry:
 		    lun->pr_key_count;
 		break;
 	default:
-		panic("Invalid PR type %x", cdb->action);
+		panic("%s: Invalid PR type %#x", __func__, cdb->action);
 	}
 	mtx_unlock(&lun->lun_lock);
 
@@ -7540,7 +7662,7 @@ retry:
 			goto retry;
 		}
 
-		scsi_ulto4b(lun->PRGeneration, res_keys->header.generation);
+		scsi_ulto4b(lun->pr_generation, res_keys->header.generation);
 
 		scsi_ulto4b(sizeof(struct scsi_per_res_key) *
 			     lun->pr_key_count, res_keys->header.length);
@@ -7571,7 +7693,7 @@ retry:
 
 		res = (struct scsi_per_res_in_rsrv *)ctsio->kern_data_ptr;
 
-		scsi_ulto4b(lun->PRGeneration, res->header.generation);
+		scsi_ulto4b(lun->pr_generation, res->header.generation);
 
 		if (lun->flags & CTL_LUN_PR_RESERVED)
 		{
@@ -7614,7 +7736,7 @@ retry:
 			scsi_u64to8b(ctl_get_prkey(lun, lun->pr_res_idx),
 			    res->data.reservation);
 		}
-		res->data.scopetype = lun->res_type;
+		res->data.scopetype = lun->pr_res_type;
 		break;
 	}
 	case SPRI_RC:     //report capabilities
@@ -7624,7 +7746,8 @@ retry:
 
 		res_cap = (struct scsi_per_res_cap *)ctsio->kern_data_ptr;
 		scsi_ulto2b(sizeof(*res_cap), res_cap->length);
-		res_cap->flags2 |= SPRI_TMV | SPRI_ALLOW_5;
+		res_cap->flags1 = SPRI_CRH;
+		res_cap->flags2 = SPRI_TMV | SPRI_ALLOW_5;
 		type_mask = SPRI_TM_WR_EX_AR |
 			    SPRI_TM_EX_AC_RO |
 			    SPRI_TM_WR_EX_RO |
@@ -7659,7 +7782,7 @@ retry:
 			goto retry;
 		}
 
-		scsi_ulto4b(lun->PRGeneration, res_status->header.generation);
+		scsi_ulto4b(lun->pr_generation, res_status->header.generation);
 
 		res_desc = &res_status->desc[0];
 		for (i = 0; i < CTL_MAX_INITIATORS; i++) {
@@ -7671,7 +7794,7 @@ retry:
 			    (lun->pr_res_idx == i ||
 			     lun->pr_res_idx == CTL_PR_ALL_REGISTRANTS)) {
 				res_desc->flags = SPRI_FULL_R_HOLDER;
-				res_desc->scopetype = lun->res_type;
+				res_desc->scopetype = lun->pr_res_type;
 			}
 			scsi_ulto2b(i / CTL_MAX_INIT_PER_PORT,
 			    res_desc->rel_trgt_port_id);
@@ -7690,12 +7813,7 @@ retry:
 		break;
 	}
 	default:
-		/*
-		 * This is a bug, because we just checked for this above,
-		 * and should have returned an error.
-		 */
-		panic("Invalid PR type %x", cdb->action);
-		break; /* NOTREACHED */
+		panic("%s: Invalid PR type %#x", __func__, cdb->action);
 	}
 	mtx_unlock(&lun->lun_lock);
 
@@ -7760,11 +7878,11 @@ ctl_pro_preempt(struct ctl_softc *softc, struct ctl_lun *lun, uint64_t res_key,
 				ctl_est_ua(lun, i, CTL_UA_REG_PREEMPT);
 			}
 			lun->pr_key_count = 1;
-			lun->res_type = type;
-			if (lun->res_type != SPR_TYPE_WR_EX_AR
-			 && lun->res_type != SPR_TYPE_EX_AC_AR)
+			lun->pr_res_type = type;
+			if (lun->pr_res_type != SPR_TYPE_WR_EX_AR &&
+			    lun->pr_res_type != SPR_TYPE_EX_AC_AR)
 				lun->pr_res_idx = residx;
-			lun->PRGeneration++;
+			lun->pr_generation++;
 			mtx_unlock(&lun->lun_lock);
 
 			/* send msg to other side */
@@ -7834,7 +7952,7 @@ ctl_pro_preempt(struct ctl_softc *softc, struct ctl_lun *lun, uint64_t res_key,
 			ctl_done((union ctl_io *)ctsio);
 			return (CTL_RETVAL_COMPLETE);
 		}
-		lun->PRGeneration++;
+		lun->pr_generation++;
 		mtx_unlock(&lun->lun_lock);
 
 		/* send msg to other side */
@@ -7900,19 +8018,19 @@ ctl_pro_preempt(struct ctl_softc *softc, struct ctl_lun *lun, uint64_t res_key,
 					ctl_clr_prkey(lun, i);
 					lun->pr_key_count--;
 					ctl_est_ua(lun, i, CTL_UA_REG_PREEMPT);
-				} else if (type != lun->res_type
-					&& (lun->res_type == SPR_TYPE_WR_EX_RO
-					 || lun->res_type ==SPR_TYPE_EX_AC_RO)){
+				} else if (type != lun->pr_res_type &&
+				    (lun->pr_res_type == SPR_TYPE_WR_EX_RO ||
+				     lun->pr_res_type == SPR_TYPE_EX_AC_RO)) {
 					ctl_est_ua(lun, i, CTL_UA_RES_RELEASE);
 				}
 			}
-			lun->res_type = type;
-			if (lun->res_type != SPR_TYPE_WR_EX_AR
-			 && lun->res_type != SPR_TYPE_EX_AC_AR)
+			lun->pr_res_type = type;
+			if (lun->pr_res_type != SPR_TYPE_WR_EX_AR &&
+			    lun->pr_res_type != SPR_TYPE_EX_AC_AR)
 				lun->pr_res_idx = residx;
 			else
 				lun->pr_res_idx = CTL_PR_ALL_REGISTRANTS;
-			lun->PRGeneration++;
+			lun->pr_generation++;
 			mtx_unlock(&lun->lun_lock);
 
 			persis_io.hdr.nexus = ctsio->io_hdr.nexus;
@@ -7949,7 +8067,7 @@ ctl_pro_preempt(struct ctl_softc *softc, struct ctl_lun *lun, uint64_t res_key,
 				ctl_done((union ctl_io *)ctsio);
 		        	return (1);
 			}
-			lun->PRGeneration++;
+			lun->pr_generation++;
 			mtx_unlock(&lun->lun_lock);
 
 			persis_io.hdr.nexus = ctsio->io_hdr.nexus;
@@ -7993,9 +8111,9 @@ ctl_pro_preempt_other(struct ctl_lun *lun, union ctl_ha_msg *msg)
 			}
 
 			lun->pr_key_count = 1;
-			lun->res_type = msg->pr.pr_info.res_type;
-			if (lun->res_type != SPR_TYPE_WR_EX_AR
-			 && lun->res_type != SPR_TYPE_EX_AC_AR)
+			lun->pr_res_type = msg->pr.pr_info.res_type;
+			if (lun->pr_res_type != SPR_TYPE_WR_EX_AR &&
+			    lun->pr_res_type != SPR_TYPE_EX_AC_AR)
 				lun->pr_res_idx = msg->pr.pr_info.residx;
 		} else {
 		        for (i = 0; i < CTL_MAX_INITIATORS; i++) {
@@ -8017,20 +8135,20 @@ ctl_pro_preempt_other(struct ctl_lun *lun, union ctl_ha_msg *msg)
 				ctl_clr_prkey(lun, i);
 				lun->pr_key_count--;
 				ctl_est_ua(lun, i, CTL_UA_REG_PREEMPT);
-			} else if (msg->pr.pr_info.res_type != lun->res_type
-				&& (lun->res_type == SPR_TYPE_WR_EX_RO
-				 || lun->res_type == SPR_TYPE_EX_AC_RO)) {
+			} else if (msg->pr.pr_info.res_type != lun->pr_res_type
+			    && (lun->pr_res_type == SPR_TYPE_WR_EX_RO ||
+			     lun->pr_res_type == SPR_TYPE_EX_AC_RO)) {
 				ctl_est_ua(lun, i, CTL_UA_RES_RELEASE);
 			}
 		}
-		lun->res_type = msg->pr.pr_info.res_type;
-		if (lun->res_type != SPR_TYPE_WR_EX_AR
-		 && lun->res_type != SPR_TYPE_EX_AC_AR)
+		lun->pr_res_type = msg->pr.pr_info.res_type;
+		if (lun->pr_res_type != SPR_TYPE_WR_EX_AR &&
+		    lun->pr_res_type != SPR_TYPE_EX_AC_AR)
 			lun->pr_res_idx = msg->pr.pr_info.residx;
 		else
 			lun->pr_res_idx = CTL_PR_ALL_REGISTRANTS;
 	}
-	lun->PRGeneration++;
+	lun->pr_generation++;
 
 }
 
@@ -8212,9 +8330,9 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 				lun->flags &= ~CTL_LUN_PR_RESERVED;
 				lun->pr_res_idx = CTL_PR_NO_RESERVATION;
 
-				if ((lun->res_type == SPR_TYPE_WR_EX_RO
-				  || lun->res_type == SPR_TYPE_EX_AC_RO)
-				 && lun->pr_key_count) {
+				if ((lun->pr_res_type == SPR_TYPE_WR_EX_RO ||
+				     lun->pr_res_type == SPR_TYPE_EX_AC_RO) &&
+				    lun->pr_key_count) {
 					/*
 					 * If the reservation is a registrants
 					 * only type we need to generate a UA
@@ -8230,15 +8348,15 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 						    CTL_UA_RES_RELEASE);
 					}
 				}
-				lun->res_type = 0;
+				lun->pr_res_type = 0;
 			} else if (lun->pr_res_idx == CTL_PR_ALL_REGISTRANTS) {
 				if (lun->pr_key_count==0) {
 					lun->flags &= ~CTL_LUN_PR_RESERVED;
-					lun->res_type = 0;
+					lun->pr_res_type = 0;
 					lun->pr_res_idx = CTL_PR_NO_RESERVATION;
 				}
 			}
-			lun->PRGeneration++;
+			lun->pr_generation++;
 			mtx_unlock(&lun->lun_lock);
 
 			persis_io.hdr.nexus = ctsio->io_hdr.nexus;
@@ -8257,7 +8375,7 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 			if (ctl_get_prkey(lun, residx) == 0)
 				lun->pr_key_count++;
 			ctl_set_prkey(lun, residx, sa_res_key);
-			lun->PRGeneration++;
+			lun->pr_generation++;
 			mtx_unlock(&lun->lun_lock);
 
 			persis_io.hdr.nexus = ctsio->io_hdr.nexus;
@@ -8286,7 +8404,7 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 			 */
 			if ((lun->pr_res_idx != residx
 			  && lun->pr_res_idx != CTL_PR_ALL_REGISTRANTS)
-			 || lun->res_type != type) {
+			 || lun->pr_res_type != type) {
 				mtx_unlock(&lun->lun_lock);
 				free(ctsio->kern_data_ptr, M_CTL);
 				ctl_set_reservation_conflict(ctsio);
@@ -8306,7 +8424,7 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 				lun->pr_res_idx = CTL_PR_ALL_REGISTRANTS;
 
 			lun->flags |= CTL_LUN_PR_RESERVED;
-			lun->res_type = type;
+			lun->pr_res_type = type;
 
 			mtx_unlock(&lun->lun_lock);
 
@@ -8341,7 +8459,7 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 			goto done;
 		}
 
-		if (lun->res_type != type) {
+		if (lun->pr_res_type != type) {
 			mtx_unlock(&lun->lun_lock);
 			free(ctsio->kern_data_ptr, M_CTL);
 			ctl_set_illegal_pr_release(ctsio);
@@ -8352,7 +8470,7 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 		/* okay to release */
 		lun->flags &= ~CTL_LUN_PR_RESERVED;
 		lun->pr_res_idx = CTL_PR_NO_RESERVATION;
-		lun->res_type = 0;
+		lun->pr_res_type = 0;
 
 		/*
 		 * if this isn't an exclusive access
@@ -8382,7 +8500,7 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 
 		mtx_lock(&lun->lun_lock);
 		lun->flags &= ~CTL_LUN_PR_RESERVED;
-		lun->res_type = 0;
+		lun->pr_res_type = 0;
 		lun->pr_key_count = 0;
 		lun->pr_res_idx = CTL_PR_NO_RESERVATION;
 
@@ -8392,7 +8510,7 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 				ctl_clr_prkey(lun, i);
 				ctl_est_ua(lun, i, CTL_UA_REG_PREEMPT);
 			}
-		lun->PRGeneration++;
+		lun->pr_generation++;
 		mtx_unlock(&lun->lun_lock);
 
 		persis_io.hdr.nexus = ctsio->io_hdr.nexus;
@@ -8413,7 +8531,7 @@ ctl_persistent_reserve_out(struct ctl_scsiio *ctsio)
 		break;
 	}
 	default:
-		panic("Invalid PR type %x", cdb->action);
+		panic("%s: Invalid PR type %#x", __func__, cdb->action);
 	}
 
 done:
@@ -8459,7 +8577,7 @@ ctl_hndl_per_res_out_on_other_sc(union ctl_ha_msg *msg)
 			lun->pr_key_count++;
 		ctl_set_prkey(lun, msg->pr.pr_info.residx,
 		    scsi_8btou64(msg->pr.pr_info.sa_res_key));
-		lun->PRGeneration++;
+		lun->pr_generation++;
 		break;
 
 	case CTL_PR_UNREG_KEY:
@@ -8472,9 +8590,9 @@ ctl_hndl_per_res_out_on_other_sc(union ctl_ha_msg *msg)
 			lun->flags &= ~CTL_LUN_PR_RESERVED;
 			lun->pr_res_idx = CTL_PR_NO_RESERVATION;
 
-			if ((lun->res_type == SPR_TYPE_WR_EX_RO
-			  || lun->res_type == SPR_TYPE_EX_AC_RO)
-			 && lun->pr_key_count) {
+			if ((lun->pr_res_type == SPR_TYPE_WR_EX_RO ||
+			     lun->pr_res_type == SPR_TYPE_EX_AC_RO) &&
+			    lun->pr_key_count) {
 				/*
 				 * If the reservation is a registrants
 				 * only type we need to generate a UA
@@ -8490,20 +8608,20 @@ ctl_hndl_per_res_out_on_other_sc(union ctl_ha_msg *msg)
 					ctl_est_ua(lun, i, CTL_UA_RES_RELEASE);
 				}
 			}
-			lun->res_type = 0;
+			lun->pr_res_type = 0;
 		} else if (lun->pr_res_idx == CTL_PR_ALL_REGISTRANTS) {
 			if (lun->pr_key_count==0) {
 				lun->flags &= ~CTL_LUN_PR_RESERVED;
-				lun->res_type = 0;
+				lun->pr_res_type = 0;
 				lun->pr_res_idx = CTL_PR_NO_RESERVATION;
 			}
 		}
-		lun->PRGeneration++;
+		lun->pr_generation++;
 		break;
 
 	case CTL_PR_RESERVE:
 		lun->flags |= CTL_LUN_PR_RESERVED;
-		lun->res_type = msg->pr.pr_info.res_type;
+		lun->pr_res_type = msg->pr.pr_info.res_type;
 		lun->pr_res_idx = msg->pr.pr_info.residx;
 
 		break;
@@ -8513,8 +8631,8 @@ ctl_hndl_per_res_out_on_other_sc(union ctl_ha_msg *msg)
 		 * if this isn't an exclusive access res generate UA for all
 		 * other registrants.
 		 */
-		if (lun->res_type != SPR_TYPE_EX_AC
-		 && lun->res_type != SPR_TYPE_WR_EX) {
+		if (lun->pr_res_type != SPR_TYPE_EX_AC &&
+		    lun->pr_res_type != SPR_TYPE_WR_EX) {
 			for (i = softc->init_min; i < softc->init_max; i++)
 				if (i == residx || ctl_get_prkey(lun, i) == 0)
 					continue;
@@ -8523,7 +8641,7 @@ ctl_hndl_per_res_out_on_other_sc(union ctl_ha_msg *msg)
 
 		lun->flags &= ~CTL_LUN_PR_RESERVED;
 		lun->pr_res_idx = CTL_PR_NO_RESERVATION;
-		lun->res_type = 0;
+		lun->pr_res_type = 0;
 		break;
 
 	case CTL_PR_PREEMPT:
@@ -8531,7 +8649,7 @@ ctl_hndl_per_res_out_on_other_sc(union ctl_ha_msg *msg)
 		break;
 	case CTL_PR_CLEAR:
 		lun->flags &= ~CTL_LUN_PR_RESERVED;
-		lun->res_type = 0;
+		lun->pr_res_type = 0;
 		lun->pr_key_count = 0;
 		lun->pr_res_idx = CTL_PR_NO_RESERVATION;
 
@@ -8541,7 +8659,7 @@ ctl_hndl_per_res_out_on_other_sc(union ctl_ha_msg *msg)
 			ctl_clr_prkey(lun, i);
 			ctl_est_ua(lun, i, CTL_UA_REG_PREEMPT);
 		}
-		lun->PRGeneration++;
+		lun->pr_generation++;
 		break;
 	}
 
@@ -9044,36 +9162,9 @@ ctl_report_luns(struct ctl_scsiio *ctsio)
 		if (lun == NULL)
 			continue;
 
-		if (targ_lun_id <= 0xff) {
-			/*
-			 * Peripheral addressing method, bus number 0.
-			 */
-			lun_data->luns[num_filled].lundata[0] =
-				RPL_LUNDATA_ATYP_PERIPH;
-			lun_data->luns[num_filled].lundata[1] = targ_lun_id;
-			num_filled++;
-		} else if (targ_lun_id <= 0x3fff) {
-			/*
-			 * Flat addressing method.
-			 */
-			lun_data->luns[num_filled].lundata[0] =
-				RPL_LUNDATA_ATYP_FLAT | (targ_lun_id >> 8);
-			lun_data->luns[num_filled].lundata[1] =
-				(targ_lun_id & 0xff);
-			num_filled++;
-		} else if (targ_lun_id <= 0xffffff) {
-			/*
-			 * Extended flat addressing method.
-			 */
-			lun_data->luns[num_filled].lundata[0] =
-			    RPL_LUNDATA_ATYP_EXTLUN | 0x12;
-			scsi_ulto3b(targ_lun_id,
-			    &lun_data->luns[num_filled].lundata[1]);
-			num_filled++;
-		} else {
-			printf("ctl_report_luns: bogus LUN number %jd, "
-			       "skipping\n", (intmax_t)targ_lun_id);
-		}
+		be64enc(lun_data->luns[num_filled++].lundata,
+		    ctl_encode_lun(targ_lun_id));
+
 		/*
 		 * According to SPC-3, rev 14 section 6.21:
 		 *
@@ -9575,7 +9666,7 @@ ctl_inquiry_evpd_devid(struct ctl_scsiio *ctsio, int alloc_len)
 	struct ctl_softc *softc;
 	struct ctl_lun *lun;
 	struct ctl_port *port;
-	int data_len;
+	int data_len, g;
 	uint8_t proto;
 
 	softc = control_softc;
@@ -9669,8 +9760,12 @@ ctl_inquiry_evpd_devid(struct ctl_scsiio *ctsio, int alloc_len)
 	desc->id_type = SVPD_ID_PIV | SVPD_ID_ASSOC_PORT |
 	    SVPD_ID_TYPE_TPORTGRP;
 	desc->length = 4;
-	scsi_ulto2b(ctsio->io_hdr.nexus.targ_port / softc->port_cnt + 1,
-	    &desc->identifier[2]);
+	if (softc->is_single ||
+	    (port && port->status & CTL_PORT_STATUS_HA_SHARED))
+		g = 1;
+	else
+		g = 2 + ctsio->io_hdr.nexus.targ_port / softc->port_cnt;
+	scsi_ulto2b(g, &desc->identifier[2]);
 	desc = (struct scsi_vpd_id_descriptor *)(&desc->identifier[0] +
 	    sizeof(struct scsi_vpd_id_trgt_port_grp_id));
 
@@ -10991,7 +11086,17 @@ ctl_check_for_blockage(struct ctl_lun *lun, union ctl_io *pending_io,
 		return (CTL_ACTION_BLOCK);
 
 	pending_entry = ctl_get_cmd_entry(&pending_io->scsiio, NULL);
+	KASSERT(pending_entry->seridx < CTL_SERIDX_COUNT,
+	    ("%s: Invalid seridx %d for pending CDB %02x %02x @ %p",
+	     __func__, pending_entry->seridx, pending_io->scsiio.cdb[0],
+	     pending_io->scsiio.cdb[1], pending_io));
 	ooa_entry = ctl_get_cmd_entry(&ooa_io->scsiio, NULL);
+	if (ooa_entry->seridx == CTL_SERIDX_INVLD)
+		return (CTL_ACTION_PASS); /* Unsupported command in OOA queue */
+	KASSERT(ooa_entry->seridx < CTL_SERIDX_COUNT,
+	    ("%s: Invalid seridx %d for ooa CDB %02x %02x @ %p",
+	     __func__, ooa_entry->seridx, ooa_io->scsiio.cdb[0],
+	     ooa_io->scsiio.cdb[1], ooa_io));
 
 	serialize_row = ctl_serialize_table[ooa_entry->seridx];
 
@@ -11022,8 +11127,9 @@ ctl_check_for_blockage(struct ctl_lun *lun, union ctl_io *pending_io,
 	case CTL_SER_SKIP:
 		return (CTL_ACTION_SKIP);
 	default:
-		panic("invalid serialization value %d",
-		      serialize_row[pending_entry->seridx]);
+		panic("%s: Invalid serialization value %d for %d => %d",
+		    __func__, serialize_row[pending_entry->seridx],
+		    pending_entry->seridx, ooa_entry->seridx);
 	}
 
 	return (CTL_ACTION_ERROR);
@@ -11072,8 +11178,7 @@ ctl_check_ooa(struct ctl_lun *lun, union ctl_io *pending_io,
 		case CTL_ACTION_PASS:
 			break;
 		default:
-			panic("invalid action %d", action);
-			break;  /* NOTREACHED */
+			panic("%s: Invalid action %d\n", __func__, action);
 		}
 	}
 
@@ -11286,9 +11391,9 @@ ctl_scsiio_lun_check(struct ctl_lun *lun,
 	    (entry->flags & CTL_CMD_FLAG_ALLOW_ON_PR_RESV)) {
 		/* No reservation or command is allowed. */;
 	} else if ((entry->flags & CTL_CMD_FLAG_ALLOW_ON_PR_WRESV) &&
-	    (lun->res_type == SPR_TYPE_WR_EX ||
-	     lun->res_type == SPR_TYPE_WR_EX_RO ||
-	     lun->res_type == SPR_TYPE_WR_EX_AR)) {
+	    (lun->pr_res_type == SPR_TYPE_WR_EX ||
+	     lun->pr_res_type == SPR_TYPE_WR_EX_RO ||
+	     lun->pr_res_type == SPR_TYPE_WR_EX_AR)) {
 		/* The command is allowed for Write Exclusive resv. */;
 	} else {
 		/*
@@ -11296,8 +11401,8 @@ ctl_scsiio_lun_check(struct ctl_lun *lun,
 		 * reservation and this isn't the res holder then set a
 		 * conflict.
 		 */
-		if (ctl_get_prkey(lun, residx) == 0
-		 || (residx != lun->pr_res_idx && lun->res_type < 4)) {
+		if (ctl_get_prkey(lun, residx) == 0 ||
+		    (residx != lun->pr_res_idx && lun->pr_res_type < 4)) {
 			ctl_set_reservation_conflict(ctsio);
 			retval = 1;
 			goto bailout;
@@ -12550,9 +12655,8 @@ ctl_datamove(union ctl_io *io)
 				    io->taskio.tag_num, io->taskio.tag_type);
 			break;
 		default:
-			printf("Invalid CTL I/O type %d\n", io->io_hdr.io_type);
-			panic("Invalid CTL I/O type %d\n", io->io_hdr.io_type);
-			break;
+			panic("%s: Invalid CTL I/O type %d\n",
+			    __func__, io->io_hdr.io_type);
 		}
 		sbuf_cat(&sb, path_str);
 		sbuf_printf(&sb, "ctl_datamove: %jd seconds\n",
@@ -13085,9 +13189,8 @@ ctl_process_done(union ctl_io *io)
 				    io->taskio.tag_num, io->taskio.tag_type);
 			break;
 		default:
-			printf("Invalid CTL I/O type %d\n", io->io_hdr.io_type);
-			panic("Invalid CTL I/O type %d\n", io->io_hdr.io_type);
-			break;
+			panic("%s: Invalid CTL I/O type %d\n",
+			    __func__, io->io_hdr.io_type);
 		}
 		sbuf_cat(&sb, path_str);
 		sbuf_printf(&sb, "ctl_process_done: %jd seconds\n",
@@ -13106,9 +13209,8 @@ ctl_process_done(union ctl_io *io)
 		fe_done(io);
 		return;
 	default:
-		panic("ctl_process_done: invalid io type %d\n",
-		      io->io_hdr.io_type);
-		break; /* NOTREACHED */
+		panic("%s: Invalid CTL I/O type %d\n",
+		    __func__, io->io_hdr.io_type);
 	}
 
 	lun = (struct ctl_lun *)io->io_hdr.ctl_private[CTL_PRIV_LUN].ptr;
