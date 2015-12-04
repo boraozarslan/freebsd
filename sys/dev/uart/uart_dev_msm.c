@@ -265,29 +265,61 @@ static int
 msm_rxready(struct uart_bas *bas)
 {
 
-	/* Wait for a character to come ready */
-	return ((uart_getreg(bas, UART_DM_SR) & UART_DM_SR_RXRDY) ==
-	    UART_DM_SR_RXRDY);
+	if (bas->count > 0)
+		return (1);
+
+	/* At least 4 bytes in the fifo */
+	if ((GETREG(bas, UART_DM_SR) & UART_DM_SR_RXRDY) ==
+	    UART_DM_SR_RXRDY)
+		return (1);
+
+	/* Less than 4 bytes in the fifo */
+	return (((GETREG(bas, UART_DM_RXFS) >> 7) & 7) != 0);
 }
 
 static int
 msm_getc(struct uart_bas *bas, struct mtx *mtx)
 {
+	uint32_t count;
 	int c;
 
 	uart_lock(mtx);
 
-	/* Wait for a character to come ready */
-	while ((uart_getreg(bas, UART_DM_SR) & UART_DM_SR_RXRDY) !=
-	    UART_DM_SR_RXRDY)
-		DELAY(4);
+	if (bas->count > 0) {
+		c = bas->data & 0xff;
+		bas->data >>= 8;
+		bas->count--;
+	} else {
+		/* Check for Overrun error. If so reset Error Status */
+		if (GETREG(bas, UART_DM_SR) & UART_DM_SR_UART_OVERRUN)
+			SETREG(bas, UART_DM_CR, UART_DM_RESET_ERROR_STATUS);
 
-	/* Check for Overrun error. If so reset Error Status */
-	if (uart_getreg(bas, UART_DM_SR) & UART_DM_SR_UART_OVERRUN)
-		uart_setreg(bas, UART_DM_CR, UART_DM_RESET_ERROR_STATUS);
+		/* We have at least 4 bytes */
+		if ((GETREG(bas, UART_DM_SR) & UART_DM_SR_RXRDY) ==
+		    UART_DM_SR_RXRDY) {
+			/* Read char */
+			c = GETREG(bas, 0x70);
+			bas->count = 3;
+			bas->data = c >> 8;
+			c &= 0xff;
+		} else {
+			do {
+				count = GETREG(bas, UART_DM_RXFS);
+				count = (count >> 7) & 7;
+			} while (count == 0);
 
-	/* Read char */
-	c = uart_getreg(bas, UART_DM_RF(0));
+			SETREG(bas, UART_DM_CR, UART_DM_CR_FORCE_STALE);
+			c = GETREG(bas, 0x70);
+			SETREG(bas, UART_DM_CR, UART_DM_CR_RESET_STALE_INT);
+			/* XXX, Why 0xFFFFFF? */
+			SETREG(bas, UART_DM_DMRX, 0xFFFFFF);
+			bas->count = count - 1;
+			if (bas->count > 3)
+				bas->count = 3;
+			bas->data = c >> 8;
+			c &= 0xff;
+		}
+	}
 
 	uart_unlock(mtx);
 
@@ -581,6 +613,7 @@ static struct uart_class uart_msm_class = {
 
 static struct ofw_compat_data compat_data[] = {
 	{"qcom,msm-uartdm",	(uintptr_t)&uart_msm_class},
+	{"qcom,msm-lsuart-v14",	(uintptr_t)&uart_msm_class},
 	{NULL,			(uintptr_t)NULL},
 };
 UART_FDT_CLASS_AND_DEVICE(compat_data);

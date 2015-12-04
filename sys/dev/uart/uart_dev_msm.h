@@ -99,8 +99,8 @@ enum UART_DM_BITS_PER_CHAR {
 #define	 UART_DM_CSR_75				0x00
 
 /* UART DM TX FIFO Registers - 4, write only */
-//#define	UART_DM_TF(x)				(0x70 + (4 * (x)))
-#define	UART_DM_TF(x)				(0x100 + (4 * (x)))
+#define	UART_DM_TF(x)				(0x70 + (4 * (x)))
+//#define	UART_DM_TF(x)				(0x100 + (4 * (x)))
 
 /* UART Command Register, write only */
 //#define	UART_DM_CR				0x10
@@ -109,6 +109,8 @@ enum UART_DM_BITS_PER_CHAR {
 #define	 UART_DM_CR_RX_DISABLE			(1 << 1)
 #define	 UART_DM_CR_TX_ENABLE			(1 << 2)
 #define	 UART_DM_CR_TX_DISABLE			(1 << 3)
+#define	 UART_DM_CR_RESET_STALE_INT		(8 << 4)
+#define	 UART_DM_CR_FORCE_STALE			(4 << 8)
 
 /* UART_DM_CR channel command bit value (register field is bits 8:4) */
 #define	UART_DM_RESET_RX			0x10
@@ -207,8 +209,8 @@ enum UART_DM_BITS_PER_CHAR {
 #define	 UART_DM_RX_BRK_START_LAST		(1 << 8)
 
 /* UART Receive FIFO Registers - 4 in numbers */
-//#define	UART_DM_RF(x)				(0x70 + (4 * (x)))
-#define	UART_DM_RF(x)				(0x140 + (4 * (x)))
+#define	UART_DM_RF(x)				(0x70 + (4 * (x)))
+//#define	UART_DM_RF(x)				(0x140 + (4 * (x)))
 
 /* UART Masked Interrupt Status Register */
 //#define	UART_DM_MISR				0x10

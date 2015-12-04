@@ -41,6 +41,9 @@ struct uart_bas {
 	u_int	chan;
 	u_int	rclk;
 	u_int	regshft;
+	/* Space for extra characters the device may provide */
+	u_int	count;
+	uint32_t data;
 };
 
 #define	uart_regofs(bas, reg)		((reg) << (bas)->regshft)
