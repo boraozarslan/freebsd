@@ -847,6 +847,7 @@ initarm(struct arm64_bootparams *abp)
 
 		physmap[2 * i] = 0;
 		physmap[2 * i + 1] = 0;
+		physmap_idx = mem_regions_sz;
 	}
 #endif
 
