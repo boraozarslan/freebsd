@@ -418,6 +418,8 @@ cpu_mp_announce(void)
 void
 cpu_mp_setmaxid(void)
 {
+	/* XXX: Limit to 1 core for now */
+#if 0
 #ifdef FDT
 	int cores;
 
@@ -431,6 +433,7 @@ cpu_mp_setmaxid(void)
 		cpu_enum_method = CPUS_FDT;
 		return;
 	}
+#endif
 #endif
 
 	if (bootverbose)
