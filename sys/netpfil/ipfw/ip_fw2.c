@@ -1511,8 +1511,8 @@ do {								\
 				    if (!match)
 					break;
 				    if (cmdlen == F_INSN_SIZE(ipfw_insn_u32))
-					match =
-					    ((ipfw_insn_u32 *)cmd)->d[0] == v;
+					match = ((ipfw_insn_u32 *)cmd)->d[0] ==
+					    TARG_VAL(chain, v, tag);
 				    else
 					tablearg = v;
 				} else if (is_ipv6) {
@@ -1524,7 +1524,8 @@ do {								\
 							sizeof(struct in6_addr),
 							pkey, &v);
 					if (cmdlen == F_INSN_SIZE(ipfw_insn_u32))
-						match = ((ipfw_insn_u32 *)cmd)->d[0] == v;
+						match = ((ipfw_insn_u32 *)cmd)->d[0] ==
+						    TARG_VAL(chain, v, tag);
 					if (match)
 						tablearg = v;
 				}
@@ -1536,7 +1537,8 @@ do {								\
 					match = ipfw_lookup_table_extended(chain,
 					    cmd->arg1, 0, &args->f_id, &v);
 					if (cmdlen == F_INSN_SIZE(ipfw_insn_u32))
-						match = ((ipfw_insn_u32 *)cmd)->d[0] == v;
+						match = ((ipfw_insn_u32 *)cmd)->d[0] ==
+						    TARG_VAL(chain, v, tag);
 					if (match)
 						tablearg = v;
 				}
@@ -2565,6 +2567,13 @@ do {								\
 				l = 0; /* in any case exit inner loop */
 				retval = ipfw_run_eaction(chain, args,
 				    cmd, &done);
+				/*
+				 * If both @retval and @done are zero,
+				 * consider this as rule matching and
+				 * update counters.
+				 */
+				if (retval == 0 && done == 0)
+					IPFW_INC_RULE_COUNTER(f, pktlen);
 				break;
 
 			default:

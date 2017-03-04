@@ -104,6 +104,7 @@ MAN=	aac.4 \
 	cfi.4 \
 	cfumass.4 \
 	ch.4 \
+	chromebook_platform.4 \
 	ciss.4 \
 	cloudabi.4 \
 	cm.4 \
@@ -895,7 +896,7 @@ MAN+=		mlx4ib.4
 .endif
 
 .if ${MK_TESTS} != "no"
-ATF=            ${.CURDIR}/../../../contrib/atf
+ATF=            ${SRCTOP}/contrib/atf
 .PATH:          ${ATF}/doc
 _atf_test_case.4=	atf-test-case.4
 .endif
