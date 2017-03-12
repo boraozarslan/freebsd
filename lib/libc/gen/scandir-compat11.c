@@ -80,7 +80,7 @@ freebsd11_scandir(const char *dirname, struct freebsd11_dirent ***namelist,
 #endif
 {
 	struct freebsd11_dirent *d, *p, **names = NULL;
-	size_t nitems = 0;
+	size_t numitems;
 	long arraysz;
 	DIR *dirp;
 
@@ -111,7 +111,7 @@ freebsd11_scandir(const char *dirname, struct freebsd11_dirent ***namelist,
 		 * Check to make sure the array has space left and
 		 * realloc the maximum size.
 		 */
-		if (nitems >= arraysz) {
+		if (numitems >= arraysz) {
 			struct freebsd11_dirent **names2;
 
 			names2 = (struct freebsd11_dirent **)realloc(
@@ -124,23 +124,23 @@ freebsd11_scandir(const char *dirname, struct freebsd11_dirent ***namelist,
 			names = names2;
 			arraysz *= 2;
 		}
-		names[nitems++] = p;
+		names[numitems++] = p;
 	}
 	closedir(dirp);
-	if (nitems && dcomp != NULL)
+	if (numitems && dcomp != NULL)
 #ifdef I_AM_SCANDIR_B
-		qsort_b(names, nitems, sizeof(struct freebsd11_dirent *),
+		qsort_b(names, numitems, sizeof(struct freebsd11_dirent *),
 		    (void*)dcomp);
 #else
-		qsort_r(names, nitems, sizeof(struct freebsd11_dirent *),
+		qsort_r(names, numitems, sizeof(struct freebsd11_dirent *),
 		    &dcomp, freebsd11_alphasort_thunk);
 #endif
 	*namelist = names;
-	return (nitems);
+	return (numitems);
 
 fail:
-	while (nitems > 0)
-		free(names[--nitems]);
+	while (numitems > 0)
+		free(names[--numitems]);
 	free(names);
 	closedir(dirp);
 	return (-1);
