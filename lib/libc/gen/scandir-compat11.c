@@ -114,9 +114,8 @@ freebsd11_scandir(const char *dirname, struct freebsd11_dirent ***namelist,
 		if (numitems >= arraysz) {
 			struct freebsd11_dirent **names2;
 
-			names2 = (struct freebsd11_dirent **)realloc(
-			    (char *)names,
-			    (arraysz * 2) * sizeof(struct freebsd11_dirent *));
+			names2 = reallocarray(names, arraysz,
+			    2 * sizeof(struct freebsd11_dirent *));
 			if (names2 == NULL) {
 				free(p);
 				goto fail;
