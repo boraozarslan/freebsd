@@ -52,7 +52,6 @@ static const char prom3[] = "Chan %d [%u] PortID 0x%06x Departed because of %s";
 static void isp_freeze_loopdown(ispsoftc_t *, int);
 static void isp_loop_changed(ispsoftc_t *isp, int chan);
 static d_ioctl_t ispioctl;
-static void isp_intr_enable(void *);
 static void isp_cam_async(void *, uint32_t, struct cam_path *, void *);
 static void isp_poll(struct cam_sim *);
 static timeout_t isp_watchdog;
@@ -278,25 +277,11 @@ isp_attach(ispsoftc_t *isp)
 	int du = device_get_unit(isp->isp_dev);
 	int chan;
 
-	isp->isp_osinfo.ehook.ich_func = isp_intr_enable;
-	isp->isp_osinfo.ehook.ich_arg = isp;
-	/*
-	 * Haha. Set this first, because if we're loaded as a module isp_intr_enable
-	 * will be called right awawy, which will clear isp_osinfo.ehook_active,
-	 * which would be unwise to then set again later.
-	 */
-	isp->isp_osinfo.ehook_active = 1;
-	if (config_intrhook_establish(&isp->isp_osinfo.ehook) != 0) {
-		isp_prt(isp, ISP_LOGERR, "could not establish interrupt enable hook");
-		return (-EIO);
-	}
-
 	/*
 	 * Create the device queue for our SIM(s).
 	 */
 	isp->isp_osinfo.devq = cam_simq_alloc(isp->isp_maxcmds);
 	if (isp->isp_osinfo.devq == NULL) {
-		config_intrhook_disestablish(&isp->isp_osinfo.ehook);
 		return (EIO);
 	}
 
@@ -329,10 +314,6 @@ unwind:
 		xpt_bus_deregister(cam_sim_path(sim));
 		ISP_UNLOCK(isp);
 		cam_sim_free(sim, FALSE);
-	}
-	if (isp->isp_osinfo.ehook_active) {
-		config_intrhook_disestablish(&isp->isp_osinfo.ehook);
-		isp->isp_osinfo.ehook_active = 0;
 	}
 	if (isp->isp_osinfo.cdev) {
 		destroy_dev(isp->isp_osinfo.cdev);
@@ -371,10 +352,6 @@ isp_detach(ispsoftc_t *isp)
 		destroy_dev(isp->isp_osinfo.cdev);
 		isp->isp_osinfo.cdev = NULL;
 	}
-	if (isp->isp_osinfo.ehook_active) {
-		config_intrhook_disestablish(&isp->isp_osinfo.ehook);
-		isp->isp_osinfo.ehook_active = 0;
-	}
 	if (isp->isp_osinfo.devq != NULL) {
 		cam_simq_free(isp->isp_osinfo.devq);
 		isp->isp_osinfo.devq = NULL;
@@ -385,42 +362,39 @@ isp_detach(ispsoftc_t *isp)
 static void
 isp_freeze_loopdown(ispsoftc_t *isp, int chan)
 {
-	if (IS_FC(isp)) {
-		struct isp_fc *fc = ISP_FC_PC(isp, chan);
-		if (fc->simqfrozen == 0) {
-			isp_prt(isp, ISP_LOGDEBUG0,
-			    "Chan %d Freeze simq (loopdown)", chan);
-			fc->simqfrozen = SIMQFRZ_LOOPDOWN;
-#if __FreeBSD_version >= 1000039
-			xpt_hold_boot();
-#endif
-			xpt_freeze_simq(fc->sim, 1);
-		} else {
-			isp_prt(isp, ISP_LOGDEBUG0,
-			    "Chan %d Mark simq frozen (loopdown)", chan);
-			fc->simqfrozen |= SIMQFRZ_LOOPDOWN;
-		}
+	struct isp_fc *fc = ISP_FC_PC(isp, chan);
+
+	if (fc->sim == NULL)
+		return;
+	if (fc->simqfrozen == 0) {
+		isp_prt(isp, ISP_LOGDEBUG0,
+		    "Chan %d Freeze simq (loopdown)", chan);
+		fc->simqfrozen = SIMQFRZ_LOOPDOWN;
+		xpt_hold_boot();
+		xpt_freeze_simq(fc->sim, 1);
+	} else {
+		isp_prt(isp, ISP_LOGDEBUG0,
+		    "Chan %d Mark simq frozen (loopdown)", chan);
+		fc->simqfrozen |= SIMQFRZ_LOOPDOWN;
 	}
 }
 
 static void
 isp_unfreeze_loopdown(ispsoftc_t *isp, int chan)
 {
-	if (IS_FC(isp)) {
-		struct isp_fc *fc = ISP_FC_PC(isp, chan);
-		int wasfrozen = fc->simqfrozen & SIMQFRZ_LOOPDOWN;
-		fc->simqfrozen &= ~SIMQFRZ_LOOPDOWN;
-		if (wasfrozen && fc->simqfrozen == 0) {
-			isp_prt(isp, ISP_LOGDEBUG0,
-			    "Chan %d Release simq", chan);
-			xpt_release_simq(fc->sim, 1);
-#if __FreeBSD_version >= 1000039
-			xpt_release_boot();
-#endif
-		}
+	struct isp_fc *fc = ISP_FC_PC(isp, chan);
+
+	if (fc->sim == NULL)
+		return;
+	int wasfrozen = fc->simqfrozen & SIMQFRZ_LOOPDOWN;
+	fc->simqfrozen &= ~SIMQFRZ_LOOPDOWN;
+	if (wasfrozen && fc->simqfrozen == 0) {
+		isp_prt(isp, ISP_LOGDEBUG0,
+		    "Chan %d Release simq", chan);
+		xpt_release_simq(fc->sim, 1);
+		xpt_release_boot();
 	}
 }
-
 
 static int
 ispioctl(struct cdev *dev, u_long c, caddr_t addr, int flags, struct thread *td)
@@ -538,40 +512,6 @@ ispioctl(struct cdev *dev, u_long c, caddr_t addr, int flags, struct thread *td)
 		}
 		break;
 	}
-	case ISP_GET_STATS:
-	{
-		isp_stats_t *sp = (isp_stats_t *) addr;
-
-		ISP_MEMZERO(sp, sizeof (*sp));
-		sp->isp_stat_version = ISP_STATS_VERSION;
-		sp->isp_type = isp->isp_type;
-		sp->isp_revision = isp->isp_revision;
-		ISP_LOCK(isp);
-		sp->isp_stats[ISP_INTCNT] = isp->isp_intcnt;
-		sp->isp_stats[ISP_INTBOGUS] = isp->isp_intbogus;
-		sp->isp_stats[ISP_INTMBOXC] = isp->isp_intmboxc;
-		sp->isp_stats[ISP_INGOASYNC] = isp->isp_intoasync;
-		sp->isp_stats[ISP_RSLTCCMPLT] = isp->isp_rsltccmplt;
-		sp->isp_stats[ISP_FPHCCMCPLT] = isp->isp_fphccmplt;
-		sp->isp_stats[ISP_RSCCHIWAT] = isp->isp_rscchiwater;
-		sp->isp_stats[ISP_FPCCHIWAT] = isp->isp_fpcchiwater;
-		ISP_UNLOCK(isp);
-		retval = 0;
-		break;
-	}
-	case ISP_CLR_STATS:
-		ISP_LOCK(isp);
-		isp->isp_intcnt = 0;
-		isp->isp_intbogus = 0;
-		isp->isp_intmboxc = 0;
-		isp->isp_intoasync = 0;
-		isp->isp_rsltccmplt = 0;
-		isp->isp_fphccmplt = 0;
-		isp->isp_rscchiwater = 0;
-		isp->isp_fpcchiwater = 0;
-		ISP_UNLOCK(isp);
-		retval = 0;
-		break;
 	case ISP_FC_GETHINFO:
 	{
 		struct isp_hba_device *hba = (struct isp_hba_device *) addr;
@@ -788,28 +728,6 @@ ispioctl(struct cdev *dev, u_long c, caddr_t addr, int flags, struct thread *td)
 		break;
 	}
 	return (retval);
-}
-
-static void
-isp_intr_enable(void *arg)
-{
-	int chan;
-	ispsoftc_t *isp = arg;
-	ISP_LOCK(isp);
-	if (IS_FC(isp)) {
-		for (chan = 0; chan < isp->isp_nchan; chan++) {
-			if (FCPARAM(isp, chan)->role != ISP_ROLE_NONE) {
-				ISP_ENABLE_INTS(isp);
-				break;
-			}
-		}
-	} else {
-		ISP_ENABLE_INTS(isp);
-	}
-	isp->isp_osinfo.ehook_active = 0;
-	ISP_UNLOCK(isp);
-	/* Release our hook so that the boot can continue. */
-	config_intrhook_disestablish(&isp->isp_osinfo.ehook);
 }
 
 /*
@@ -1578,7 +1496,7 @@ isp_target_start_ctio(ispsoftc_t *isp, union ccb *ccb, enum Start_Ctio_How how)
 					isp_prt(isp, ISP_LOGTDEBUG0, "%s: ests base %p vaddr %p ecmd_dma %jx addr %jx len %u", __func__, isp->isp_osinfo.ecmd_base, atp->ests,
 					    (uintmax_t) isp->isp_osinfo.ecmd_dma, (uintmax_t)addr, MIN_FCP_RESPONSE_SIZE + sense_length);
 					cto->rsp.m2.ct_datalen = MIN_FCP_RESPONSE_SIZE + sense_length;
-					if (isp->isp_osinfo.sixtyfourbit) {
+					if (cto->ct_header.rqs_entry_type == RQSTYPE_CTIO3) {
 						cto->rsp.m2.u.ct_fcp_rsp_iudata_64.ds_base = DMA_LO32(addr);
 						cto->rsp.m2.u.ct_fcp_rsp_iudata_64.ds_basehi = DMA_HI32(addr);
 						cto->rsp.m2.u.ct_fcp_rsp_iudata_64.ds_count = MIN_FCP_RESPONSE_SIZE + sense_length;
@@ -1736,10 +1654,6 @@ isp_target_putback_atio(union ccb *ccb)
 	at->at_header.rqs_entry_count = 1;
 	if (ISP_CAP_SCCFW(isp)) {
 		at->at_scclun = (uint16_t) ccb->ccb_h.target_lun;
-#if __FreeBSD_version < 1000700
-		if (at->at_scclun >= 256)
-			at->at_scclun |= 0x4000;
-#endif
 	} else {
 		at->at_lun = (uint8_t) ccb->ccb_h.target_lun;
 	}
@@ -1788,9 +1702,6 @@ isp_handle_platform_atio2(ispsoftc_t *isp, at2_entry_t *aep)
 	fcp = FCPARAM(isp, 0);
 	if (ISP_CAP_SCCFW(isp)) {
 		lun = aep->at_scclun;
-#if __FreeBSD_version < 1000700
-		lun &= 0x3fff;
-#endif
 	} else {
 		lun = aep->at_lun;
 	}
@@ -1831,8 +1742,7 @@ isp_handle_platform_atio2(ispsoftc_t *isp, at2_entry_t *aep)
 
 	atp->state = ATPD_STATE_ATIO;
 	SLIST_REMOVE_HEAD(&tptr->atios, sim_links.sle);
-	tptr->atio_count--;
-	isp_prt(isp, ISP_LOGTDEBUG2, "Take FREE ATIO count now %d", tptr->atio_count);
+	ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, atiop->ccb_h.path, "Take FREE ATIO\n");
 	atiop->ccb_h.target_id = fcp->isp_loopid;
 	atiop->ccb_h.target_lun = lun;
 
@@ -1926,12 +1836,7 @@ isp_handle_platform_atio7(ispsoftc_t *isp, at7_entry_t *aep)
 
 	did = (aep->at_hdr.d_id[0] << 16) | (aep->at_hdr.d_id[1] << 8) | aep->at_hdr.d_id[2];
 	sid = (aep->at_hdr.s_id[0] << 16) | (aep->at_hdr.s_id[1] << 8) | aep->at_hdr.s_id[2];
-#if __FreeBSD_version >= 1000700
 	lun = CAM_EXTLUN_BYTE_SWIZZLE(be64dec(aep->at_cmnd.fcp_cmnd_lun));
-#else
-	lun = (aep->at_cmnd.fcp_cmnd_lun[0] & 0x3f << 8) |
-	    aep->at_cmnd.fcp_cmnd_lun[1];
-#endif
 
 	/*
 	 * Find the N-port handle, and Virtual Port Index for this command.
@@ -2049,8 +1954,7 @@ isp_handle_platform_atio7(ispsoftc_t *isp, at7_entry_t *aep)
 	atp->word3 = lp->prli_word3;
 	atp->state = ATPD_STATE_ATIO;
 	SLIST_REMOVE_HEAD(&tptr->atios, sim_links.sle);
-	tptr->atio_count--;
-	ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, atiop->ccb_h.path, "Take FREE ATIO count now %d\n", tptr->atio_count);
+	ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, atiop->ccb_h.path, "Take FREE ATIO\n");
 	atiop->init_id = FC_PORTDB_TGT(isp, chan, lp);
 	atiop->ccb_h.target_id = FCPARAM(isp, chan)->isp_loopid;
 	atiop->ccb_h.target_lun = lun;
@@ -2419,9 +2323,6 @@ isp_handle_platform_notify_fc(ispsoftc_t *isp, in_fcentry_t *inp)
 
 		if (ISP_CAP_SCCFW(isp)) {
 			lun = inp->in_scclun;
-#if __FreeBSD_version < 1000700
-			lun &= 0x3fff;
-#endif
 		} else {
 			lun = inp->in_lun;
 		}
@@ -2794,9 +2695,8 @@ isp_handle_platform_target_tmf(ispsoftc_t *isp, isp_notify_t *notify)
 	ntp->seq_id = notify->nt_tagval;
 	ntp->tag_id = notify->nt_tagval >> 32;
 
-	tptr->inot_count--;
 	SLIST_REMOVE_HEAD(&tptr->inots, sim_links.sle);
-	ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, inot->ccb_h.path, "%s: Take FREE INOT count now %d\n", __func__, tptr->inot_count);
+	ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, inot->ccb_h.path, "Take FREE INOT\n");
 	inot->ccb_h.status = CAM_MESSAGE_RECV;
 	xpt_done((union ccb *)inot);
 	return;
@@ -2892,10 +2792,8 @@ static void
 isp_poll(struct cam_sim *sim)
 {
 	ispsoftc_t *isp = cam_sim_softc(sim);
-	uint16_t isr, sema, info;
 
-	if (ISP_READ_ISR(isp, &isr, &sema, &info))
-		isp_intr(isp, isr, sema, info);
+	ISP_RUN_ISR(isp);
 }
 
 
@@ -2914,9 +2812,7 @@ isp_watchdog(void *arg)
 	 * Hand crank the interrupt code just to be sure the command isn't stuck somewhere.
 	 */
 	if (handle != ISP_HANDLE_FREE) {
-		uint16_t isr, sema, info;
-		if (ISP_READ_ISR(isp, &isr, &sema, &info) != 0)
-			isp_intr(isp, isr, sema, info);
+		ISP_RUN_ISR(isp);
 		ohandle = handle;
 		handle = isp_find_handle(isp, xs);
 	}
@@ -3092,7 +2988,6 @@ isp_loop_changed(ispsoftc_t *isp, int chan)
 	isp_prt(isp, ISP_LOG_SANCFG|ISP_LOGDEBUG0, "Chan %d Loop changed", chan);
 	if (fcp->role & ISP_ROLE_INITIATOR)
 		isp_freeze_loopdown(isp, chan);
-	fc->loop_dead = 0;
 	fc->loop_down_time = time_uptime;
 	wakeup(fc);
 }
@@ -3104,7 +2999,6 @@ isp_loop_up(ispsoftc_t *isp, int chan)
 
 	isp_prt(isp, ISP_LOG_SANCFG|ISP_LOGDEBUG0, "Chan %d Loop is up", chan);
 	fc->loop_seen_once = 1;
-	fc->loop_dead = 0;
 	fc->loop_down_time = 0;
 	isp_unfreeze_loopdown(isp, chan);
 }
@@ -3168,7 +3062,6 @@ isp_loop_dead(ispsoftc_t *isp, int chan)
 	}
 
 	isp_unfreeze_loopdown(isp, chan);
-	fc->loop_dead = 1;
 	fc->loop_down_time = 0;
 }
 
@@ -3259,7 +3152,8 @@ isp_abort_atio(ispsoftc_t *isp, union ccb *ccb)
 			if (sccb != &accb->ccb_h)
 				continue;
 			SLIST_REMOVE(&tptr->atios, sccb, ccb_hdr, sim_links.sle);
-			tptr->atio_count--;
+			ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, sccb->path,
+			    "Abort FREE ATIO\n");
 			accb->ccb_h.status = CAM_REQ_ABORTED;
 			xpt_done(accb);
 			ccb->ccb_h.status = CAM_REQ_CMP;
@@ -3309,7 +3203,8 @@ isp_abort_inot(ispsoftc_t *isp, union ccb *ccb)
 			if (sccb != &accb->ccb_h)
 				continue;
 			SLIST_REMOVE(&tptr->inots, sccb, ccb_hdr, sim_links.sle);
-			tptr->inot_count--;
+			ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, sccb->path,
+			    "Abort FREE INOT\n");
 			accb->ccb_h.status = CAM_REQ_ABORTED;
 			xpt_done(accb);
 			ccb->ccb_h.status = CAM_REQ_CMP;
@@ -3396,18 +3291,6 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 			callout_reset(&PISP_PCMD(ccb)->wdog, ts, isp_watchdog, ccb);
 			break;
 		case CMD_RQLATER:
-			/*
-			 * We get this result if the loop isn't ready
-			 * or if the device in question has gone zombie.
-			 */
-			if (ISP_FC_PC(isp, bus)->loop_dead) {
-				isp_prt(isp, ISP_LOGDEBUG0,
-				    "%d.%jx loop is dead",
-				    XS_TGT(ccb), (uintmax_t)XS_LUN(ccb));
-				ccb->ccb_h.status = CAM_SEL_TIMEOUT;
-				isp_done((struct ccb_scsiio *) ccb);
-				break;
-			}
 			isp_prt(isp, ISP_LOGDEBUG0, "%d.%jx retry later",
 			    XS_TGT(ccb), (uintmax_t)XS_LUN(ccb));
 			cam_freeze_devq(ccb->ccb_h.path);
@@ -3465,16 +3348,14 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 
 		if (ccb->ccb_h.func_code == XPT_ACCEPT_TARGET_IO) {
 			ccb->atio.tag_id = 0;
-			tptr->atio_count++;
 			SLIST_INSERT_HEAD(&tptr->atios, &ccb->ccb_h, sim_links.sle);
 			ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, ccb->ccb_h.path,
-			    "Put FREE ATIO, count now %d\n", tptr->atio_count);
+			    "Put FREE ATIO\n");
 		} else if (ccb->ccb_h.func_code == XPT_IMMEDIATE_NOTIFY) {
 			ccb->cin1.seq_id = ccb->cin1.tag_id = 0;
-			tptr->inot_count++;
 			SLIST_INSERT_HEAD(&tptr->inots, &ccb->ccb_h, sim_links.sle);
 			ISP_PATH_PRT(isp, ISP_LOGTDEBUG2, ccb->ccb_h.path,
-			    "Put FREE INOT, count now %d\n", tptr->inot_count);
+			    "Put FREE INOT\n");
 		}
 		ccb->ccb_h.status = CAM_REQ_INPROG;
 		break;
@@ -3879,12 +3760,7 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 			fcparam *fcp = FCPARAM(isp, bus);
 
 			cpi->hba_misc = PIM_NOBUSRESET | PIM_UNMAPPED;
-#if __FreeBSD_version >= 1000700
-			cpi->hba_misc |= PIM_EXTLUNS;
-#endif
-#if __FreeBSD_version >= 1000039
-			cpi->hba_misc |= PIM_NOSCAN;
-#endif
+			cpi->hba_misc |= PIM_EXTLUNS | PIM_NOSCAN;
 
 			/*
 			 * Because our loop ID can shift from time to time,
@@ -3937,8 +3813,6 @@ isp_action(struct cam_sim *sim, union ccb *ccb)
 	}
 }
 
-#define	ISPDDB	(CAM_DEBUG_INFO|CAM_DEBUG_TRACE|CAM_DEBUG_CDB)
-
 void
 isp_done(XS_T *sccb)
 {
@@ -3959,27 +3833,10 @@ isp_done(XS_T *sccb)
 
 	sccb->ccb_h.status &= ~CAM_SIM_QUEUED;
 	status = sccb->ccb_h.status & CAM_STATUS_MASK;
-	if (status != CAM_REQ_CMP) {
-		if (status != CAM_SEL_TIMEOUT)
-			isp_prt(isp, ISP_LOGDEBUG0,
-			    "target %d lun %jx CAM status 0x%x SCSI status 0x%x",
-			    XS_TGT(sccb), (uintmax_t)XS_LUN(sccb),
-			    sccb->ccb_h.status, sccb->scsi_status);
-		else if ((IS_FC(isp))
-		      && (XS_TGT(sccb) < MAX_FC_TARG)) {
-			fcparam *fcp;
-
-			fcp = FCPARAM(isp, XS_CHANNEL(sccb));
-			fcp->portdb[XS_TGT(sccb)].is_target = 0;
-		}
-		if ((sccb->ccb_h.status & CAM_DEV_QFRZN) == 0) {
-			sccb->ccb_h.status |= CAM_DEV_QFRZN;
-			xpt_freeze_devq(sccb->ccb_h.path, 1);
-		}
-	}
-
-	if ((CAM_DEBUGGED(sccb->ccb_h.path, ISPDDB)) && (sccb->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP) {
-		xpt_print(sccb->ccb_h.path, "cam completion status 0x%x\n", sccb->ccb_h.status);
+	if (status != CAM_REQ_CMP &&
+	    (sccb->ccb_h.status & CAM_DEV_QFRZN) == 0) {
+		sccb->ccb_h.status |= CAM_DEV_QFRZN;
+		xpt_freeze_devq(sccb->ccb_h.path, 1);
 	}
 
 	if (ISP_PCMD(sccb)) {
@@ -4394,32 +4251,19 @@ changed:
 			mbox6 = 0;
 		}
 		isp_prt(isp, ISP_LOGERR, "Internal Firmware Error on bus %d @ RISC Address 0x%x", mbox6, mbox1);
+#if 0
 		mbox1 = isp->isp_osinfo.mbox_sleep_ok;
 		isp->isp_osinfo.mbox_sleep_ok = 0;
 		isp_reinit(isp, 1);
 		isp->isp_osinfo.mbox_sleep_ok = mbox1;
 		isp_async(isp, ISPASYNC_FW_RESTARTED, NULL);
+#endif
 		break;
 	}
 	default:
 		isp_prt(isp, ISP_LOGERR, "unknown isp_async event %d", cmd);
 		break;
 	}
-}
-
-
-/*
- * Locks are held before coming here.
- */
-void
-isp_uninit(ispsoftc_t *isp)
-{
-	if (IS_24XX(isp)) {
-		ISP_WRITE(isp, BIU2400_HCCR, HCCR_2400_CMD_RESET);
-	} else {
-		ISP_WRITE(isp, HCCR, HCCR_CMD_RESET);
-	}
-	ISP_DISABLE_INTS(isp);
 }
 
 uint64_t
@@ -4531,50 +4375,30 @@ isp_mbox_acquire(ispsoftc_t *isp)
 void
 isp_mbox_wait_complete(ispsoftc_t *isp, mbreg_t *mbp)
 {
-	unsigned int usecs = mbp->timeout;
-	unsigned int max, olim, ilim;
+	u_int t, to;
 
-	if (usecs == 0) {
-		usecs = MBCMD_DEFAULT_TIMEOUT;
-	}
-	max = isp->isp_mbxwrk0 + 1;
-
+	to = (mbp->timeout == 0) ? MBCMD_DEFAULT_TIMEOUT : mbp->timeout;
 	if (isp->isp_osinfo.mbox_sleep_ok) {
-		unsigned int ms = (usecs + 999) / 1000;
-
 		isp->isp_osinfo.mbox_sleep_ok = 0;
 		isp->isp_osinfo.mbox_sleeping = 1;
-		for (olim = 0; olim < max; olim++) {
-			msleep(&isp->isp_mbxworkp, &isp->isp_osinfo.lock, PRIBIO, "ispmbx_sleep", isp_mstohz(ms));
-			if (isp->isp_osinfo.mboxcmd_done) {
-				break;
-			}
-		}
+		msleep_sbt(&isp->isp_osinfo.mboxcmd_done, &isp->isp_osinfo.lock,
+		    PRIBIO, "ispmbx_sleep", to * SBT_1US, 0, 0);
 		isp->isp_osinfo.mbox_sleep_ok = 1;
 		isp->isp_osinfo.mbox_sleeping = 0;
 	} else {
-		for (olim = 0; olim < max; olim++) {
-			for (ilim = 0; ilim < usecs; ilim += 100) {
-				uint16_t isr, sema, info;
-				if (isp->isp_osinfo.mboxcmd_done) {
-					break;
-				}
-				if (ISP_READ_ISR(isp, &isr, &sema, &info)) {
-					isp_intr(isp, isr, sema, info);
-					if (isp->isp_osinfo.mboxcmd_done) {
-						break;
-					}
-				}
-				ISP_DELAY(100);
-			}
-			if (isp->isp_osinfo.mboxcmd_done) {
+		for (t = 0; t < to; t += 100) {
+			if (isp->isp_osinfo.mboxcmd_done)
 				break;
-			}
+			ISP_RUN_ISR(isp);
+			if (isp->isp_osinfo.mboxcmd_done)
+				break;
+			ISP_DELAY(100);
 		}
 	}
 	if (isp->isp_osinfo.mboxcmd_done == 0) {
-		isp_prt(isp, ISP_LOGWARN, "%s Mailbox Command (0x%x) Timeout (%uus) (started @ %s:%d)",
-		    isp->isp_osinfo.mbox_sleep_ok? "Interrupting" : "Polled", isp->isp_lastmbxcmd, usecs, mbp->func, mbp->lineno);
+		isp_prt(isp, ISP_LOGWARN, "%s Mailbox Command (0x%x) Timeout (%uus) (%s:%d)",
+		    isp->isp_osinfo.mbox_sleep_ok? "Interrupting" : "Polled",
+		    isp->isp_lastmbxcmd, to, mbp->func, mbp->lineno);
 		mbp->param[0] = MBOX_TIMEOUT;
 		isp->isp_osinfo.mboxcmd_done = 1;
 	}
@@ -4583,10 +4407,9 @@ isp_mbox_wait_complete(ispsoftc_t *isp, mbreg_t *mbp)
 void
 isp_mbox_notify_done(ispsoftc_t *isp)
 {
-	if (isp->isp_osinfo.mbox_sleeping) {
-		wakeup(&isp->isp_mbxworkp);
-	}
 	isp->isp_osinfo.mboxcmd_done = 1;
+	if (isp->isp_osinfo.mbox_sleeping)
+		wakeup(&isp->isp_osinfo.mboxcmd_done);
 }
 
 void
@@ -4628,14 +4451,9 @@ void
 isp_platform_intr(void *arg)
 {
 	ispsoftc_t *isp = arg;
-	uint16_t isr, sema, info;
 
 	ISP_LOCK(isp);
-	isp->isp_intcnt++;
-	if (ISP_READ_ISR(isp, &isr, &sema, &info))
-		isp_intr(isp, isr, sema, info);
-	else
-		isp->isp_intbogus++;
+	ISP_RUN_ISR(isp);
 	ISP_UNLOCK(isp);
 }
 

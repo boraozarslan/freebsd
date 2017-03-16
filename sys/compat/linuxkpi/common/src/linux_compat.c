@@ -92,7 +92,6 @@ struct device linux_root_device;
 struct class linux_class_misc;
 struct list_head pci_drivers;
 struct list_head pci_devices;
-struct net init_net;
 spinlock_t pci_lock;
 
 unsigned long linux_timer_hz_mask;
@@ -999,6 +998,8 @@ linux_timer_callback_wrapper(void *context)
 {
 	struct timer_list *timer;
 
+	linux_set_current(curthread);
+
 	timer = context;
 	timer->function(timer->data);
 }
@@ -1342,6 +1343,8 @@ void
 linux_irq_handler(void *ent)
 {
 	struct irq_ent *irqe;
+
+	linux_set_current(curthread);
 
 	irqe = ent;
 	irqe->handler(irqe->irq, irqe->arg);
