@@ -66,9 +66,14 @@ static char sccsid[] = "@(#)kvm.c	8.2 (Berkeley) 2/13/94";
 
 SET_DECLARE(kvm_arch, struct kvm_arch);
 
+static char _kd_is_null[] = "";
+
 char *
 kvm_geterr(kvm_t *kd)
 {
+
+	if (kd == NULL)
+		return (_kd_is_null);
 	return (kd->errbuf);
 }
 
@@ -272,6 +277,10 @@ kvm_close(kvm_t *kd)
 {
 	int error = 0;
 
+	if (kd == NULL) {
+		errno = EINVAL;
+		return (-1);
+	}
 	if (kd->vmst != NULL)
 		kd->arch->ka_freevtop(kd);
 	if (kd->pmfd >= 0)
@@ -292,7 +301,7 @@ kvm_close(kvm_t *kd)
 		free(kd->pt_map);
 	free((void *)kd);
 
-	return (0);
+	return (error);
 }
 
 int
@@ -467,7 +476,7 @@ kvm_write(kvm_t *kd, u_long kva, const void *buf, size_t len)
 		len -= cw;
 	}
 
-	return (cp - (char *)buf);
+	return (cp - (const char *)buf);
 }
 
 int
