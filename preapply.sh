@@ -34,7 +34,7 @@ add_files="$add_files lib/libc/gen/gen-compat.h lib/libc/gen/devname-compat11.c"
 add_files="$add_files lib/libprocstat/libprocstat_compat.c"
 svn add $add_files
 svn propset svn:keywords 'FreeBSD=%H' $add_files
-rm -f TODO.ino64 preapply.sh abi.sh
+rm -f TODO.ino64 preapply.sh abi.sh ports.patch
 xxx=$(svn st | awk '$1 ~ /^\?$/ {print $2}')
 if [ x"$xxx" \!= x ]; then
     echo "unmanaged files were found after patching, check"
