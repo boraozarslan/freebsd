@@ -1,3 +1,80 @@
+Index: devel/llvm39/Makefile
+===================================================================
+--- devel/llvm39/Makefile	(revision 437547)
++++ devel/llvm39/Makefile	(working copy)
+@@ -326,6 +326,7 @@
+ 
+ post-patch-COMPILER_RT-on:
+ 	cd ${WRKSRC_compiler_rt} && patch < ${PATCHDIR}/compiler-rt-patch-svn-294806
++	cd ${WRKSRC_compiler_rt} && patch < ${PATCHDIR}/compiler-rt-patch-ino64
+ 
+ post-build-COMPILER_RT-on:
+ 	${MKDIR} ${WRKDIR}/compiler-rt-build
+Index: devel/llvm39/files/compiler-rt-patch-ino64
+===================================================================
+--- devel/llvm39/files/compiler-rt-patch-ino64	(nonexistent)
++++ devel/llvm39/files/compiler-rt-patch-ino64	(working copy)
+@@ -0,0 +1,49 @@
++diff --git lib/sanitizer_common/sanitizer_linux.cc lib/sanitizer_common/sanitizer_linux.cc
++index 7328a5c0ac1..4b59a39ee27 100644
++--- lib/sanitizer_common/sanitizer_linux.cc
+++++ lib/sanitizer_common/sanitizer_linux.cc
++@@ -223,7 +223,8 @@ static void kernel_stat_to_stat(struct kernel_stat *in, struct stat *out) {
++ 
++ uptr internal_stat(const char *path, void *buf) {
++ #if SANITIZER_FREEBSD
++-  return internal_syscall(SYSCALL(stat), path, buf);
+++  return internal_syscall(SYSCALL(fstatat), AT_FDCWD, (uptr)path,
+++                          (uptr)buf, 0);
++ #elif SANITIZER_USES_CANONICAL_LINUX_SYSCALLS
++   return internal_syscall(SYSCALL(newfstatat), AT_FDCWD, (uptr)path,
++                           (uptr)buf, 0);
++@@ -247,7 +248,8 @@ uptr internal_stat(const char *path, void *buf) {
++ 
++ uptr internal_lstat(const char *path, void *buf) {
++ #if SANITIZER_FREEBSD
++-  return internal_syscall(SYSCALL(lstat), path, buf);
+++  return internal_syscall(SYSCALL(fstatat), AT_FDCWD, (uptr)path,
+++                         (uptr)buf, AT_SYMLINK_NOFOLLOW);
++ #elif SANITIZER_USES_CANONICAL_LINUX_SYSCALLS
++   return internal_syscall(SYSCALL(newfstatat), AT_FDCWD, (uptr)path,
++                          (uptr)buf, AT_SYMLINK_NOFOLLOW);
++@@ -590,7 +592,9 @@ uptr internal_getppid() {
++ }
++ 
++ uptr internal_getdents(fd_t fd, struct linux_dirent *dirp, unsigned int count) {
++-#if SANITIZER_USES_CANONICAL_LINUX_SYSCALLS
+++#if SANITIZER_FREEBSD
+++  return internal_syscall(SYSCALL(getdirentries), fd, (uptr)dirp, count, NULL);
+++#elif SANITIZER_USES_CANONICAL_LINUX_SYSCALLS
++   return internal_syscall(SYSCALL(getdents64), fd, (uptr)dirp, count);
++ #else
++   return internal_syscall(SYSCALL(getdents), fd, (uptr)dirp, count);
++diff --git lib/sanitizer_common/sanitizer_platform_limits_posix.h lib/sanitizer_common/sanitizer_platform_limits_posix.h
++index 5cbd78d3c1b..d7ce7b501f7 100644
++--- lib/sanitizer_common/sanitizer_platform_limits_posix.h
+++++ lib/sanitizer_common/sanitizer_platform_limits_posix.h
++@@ -489,7 +489,8 @@ namespace __sanitizer {
++   };
++ #elif SANITIZER_FREEBSD
++   struct __sanitizer_dirent {
++-    unsigned int d_fileno;
+++    unsigned long long d_fileno;
+++    unsigned long long d_off;
++     unsigned short d_reclen;
++     // more fields that we don't care about
++   };
+
+Property changes on: devel/llvm39/files/compiler-rt-patch-ino64
+___________________________________________________________________
+Added: svn:eol-style
+## -0,0 +1 ##
++native
+\ No newline at end of property
+Added: svn:mime-type
+## -0,0 +1 ##
++text/plain
+\ No newline at end of property
 Index: devel/llvm40/Makefile
 ===================================================================
 --- devel/llvm40/Makefile	(revision 437547)
