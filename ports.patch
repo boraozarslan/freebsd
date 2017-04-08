@@ -1,8 +1,8 @@
 Index: devel/llvm39/Makefile
 ===================================================================
---- devel/llvm39/Makefile	(revision 437547)
+--- devel/llvm39/Makefile	(revision 437869)
 +++ devel/llvm39/Makefile	(working copy)
-@@ -326,6 +326,7 @@
+@@ -333,6 +333,7 @@
  
  post-patch-COMPILER_RT-on:
  	cd ${WRKSRC_compiler_rt} && patch < ${PATCHDIR}/compiler-rt-patch-svn-294806
@@ -77,9 +77,9 @@ Added: svn:mime-type
 \ No newline at end of property
 Index: devel/llvm40/Makefile
 ===================================================================
---- devel/llvm40/Makefile	(revision 437547)
+--- devel/llvm40/Makefile	(revision 437869)
 +++ devel/llvm40/Makefile	(working copy)
-@@ -319,6 +319,9 @@
+@@ -326,6 +326,9 @@
  post-extract-OPENMP-on:
  	${MV} ${WRKSRC_openmp} ${PATCH_WRKSRC}/tools/openmp
  
@@ -145,6 +145,104 @@ Index: devel/llvm40/files/compiler-rt-patch-ino64
 +   };
 
 Property changes on: devel/llvm40/files/compiler-rt-patch-ino64
+___________________________________________________________________
+Added: svn:eol-style
+## -0,0 +1 ##
++native
+\ No newline at end of property
+Added: svn:mime-type
+## -0,0 +1 ##
++text/plain
+\ No newline at end of property
+Index: lang/ghc/Makefile
+===================================================================
+--- lang/ghc/Makefile	(revision 437869)
++++ lang/ghc/Makefile	(working copy)
+@@ -239,6 +239,9 @@
+ 	@${REINPLACE_CMD} -e 's|@SettingsCCompilerFlags@|& -Qunused-arguments|' ${BOOT_DIR}/settings.in
+ .endif
+ .endif
++.if empty(PORT_OPTIONS:MBOOT)
++	@${REINPLACE_CMD} -e 's|@SettingsCCompilerLinkFlags@|& -Wl,--wrap=readdir_r,--wrap=stat,--wrap=lstat,--wrap=fstat,--wrap=mknod|' ${BOOT_DIR}/settings.in
++.endif
+ 
+ post-install-script:
+ 	@${FIND} -ds ${GHC_LIBDIR} -type f -print | ${SED} -E -e \
+@@ -266,6 +269,13 @@
+ 		s|%%AR%%|${AR}|; \
+ 		s|%%LD%%|${LD}|' \
+ 		${WRKSRC}/libraries/Cabal/Cabal/Distribution/Simple/Program/Builtin.hs
++.if empty(PORT_OPTIONS:MBOOTH)
++	${CC} ${CFLAGS} -c -o ${BOOT_DIR}/wrap.o ${PATCHDIR}/wrap.c
++	for x in ${BOOT_DIR}/rts/dist/build/libCffi*.a; do \
++	    ${AR} q $$x ${BOOT_DIR}/wrap.o; ${RANLIB} $$x; \
++	done
++	rm ${BOOT_DIR}/wrap.o
++.endif
+ 
+ pre-configure:
+ 	@${MKDIR} ${TMPDIR}
+Index: lang/ghc/files/wrap.c
+===================================================================
+--- lang/ghc/files/wrap.c	(nonexistent)
++++ lang/ghc/files/wrap.c	(working copy)
+@@ -0,0 +1,54 @@
++/* -*- ugly-hack-mode -*- */
++
++#include <sys/stat.h>
++
++struct old_dirent;
++struct old_stat;
++
++__asm(".symver	old_readdir_r, readdir_r@FBSD_1.0");
++int old_readdir_r(void *dirp, struct old_dirent *entry,
++    struct old_dirent **result);
++__asm(".symver	old_stat, stat@FBSD_1.0");
++int old_stat(const char * restrict path, struct old_stat * restrict sb);
++__asm(".symver	old_lstat, lstat@FBSD_1.0");
++int old_lstat(const char * restrict path, struct old_stat * restrict sb);
++__asm(".symver	old_fstat, fstat@FBSD_1.0");
++int old_fstat(int fd, struct old_stat *sb);
++__asm(".symver	old_mknod, mknod@FBSD_1.0");
++int old_mknod(const char *path, mode_t mode, uint32_t dev);
++
++int
++__wrap_readdir_r(void *dirp, struct old_dirent *entry,
++    struct old_dirent **result)
++{
++
++	return (old_readdir_r(dirp, entry, result));
++}
++
++int
++__wrap_stat(const char * restrict path, struct old_stat * restrict sb)
++{
++
++	return (old_stat(path, sb));
++}
++
++int
++__wrap_lstat(const char * restrict path, struct old_stat * restrict sb)
++{
++
++	return (old_lstat(path, sb));
++}
++
++int
++__wrap_fstat(int fd, struct old_stat *sb)
++{
++
++	return (old_fstat(fd, sb));
++}
++
++int
++__wrap_mknod(const char *path, mode_t mode, uint32_t dev)
++{
++
++	return (old_mknod(path, mode, dev));
++}
+
+Property changes on: lang/ghc/files/wrap.c
 ___________________________________________________________________
 Added: svn:eol-style
 ## -0,0 +1 ##
