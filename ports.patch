@@ -276,7 +276,7 @@ Index: lang/rust/files/patch-ino64
 +     pub struct dirent {
 +-        pub d_fileno: u32,
 ++        pub d_fileno: u64,
-++	pud d_off: u64,
+++	pub d_off: u64,
 +         pub d_reclen: u16,
 +         pub d_type: u8,
 +         pub d_namlen: u8,
