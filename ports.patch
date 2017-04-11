@@ -256,9 +256,9 @@ Index: lang/rust/files/patch-ino64
 ===================================================================
 --- lang/rust/files/patch-ino64	(nonexistent)
 +++ lang/rust/files/patch-ino64	(working copy)
-@@ -0,0 +1,104 @@
-+--- src/liblibc/src/unix/bsd/freebsdlike/freebsd/mod.rs.orig	2017-04-08 22:42:18.303611000 +0000
-++++ src/liblibc/src/unix/bsd/freebsdlike/freebsd/mod.rs	2017-04-08 22:48:15.613751000 +0000
+@@ -0,0 +1,265 @@
++--- src/liblibc/src/unix/bsd/freebsdlike/freebsd/mod.rs.orig	2017-03-10 22:56:40.000000000 +0000
+++++ src/liblibc/src/unix/bsd/freebsdlike/freebsd/mod.rs	2017-04-11 21:44:32.442980000 +0000
 +@@ -1,8 +1,8 @@
 + pub type fflags_t = u32;
 + pub type clock_t = i32;
@@ -276,16 +276,16 @@ Index: lang/rust/files/patch-ino64
 +     pub struct dirent {
 +-        pub d_fileno: u32,
 ++        pub d_fileno: u64,
-++	pub d_off: u64,
+++        pub d_off: u64,
 +         pub d_reclen: u16,
 +         pub d_type: u8,
 +         pub d_namlen: u8,
-++	pub d_pad0: u32,
+++        pub d_pad0: u32,
 +         pub d_name: [::c_char; 256],
 +     }
 + 
-+--- src/liblibc/src/unix/bsd/freebsdlike/freebsd/x86.rs.orig	2017-04-08 22:43:55.204868000 +0000
-++++ src/liblibc/src/unix/bsd/freebsdlike/freebsd/x86.rs	2017-04-08 22:51:55.756029000 +0000
++--- src/liblibc/src/unix/bsd/freebsdlike/freebsd/x86.rs.orig	2017-03-10 22:56:40.000000000 +0000
+++++ src/liblibc/src/unix/bsd/freebsdlike/freebsd/x86.rs	2017-04-11 21:44:57.060591000 +0000
 +@@ -7,10 +7,12 @@
 +     pub struct stat {
 +         pub st_dev: ::dev_t,
@@ -293,10 +293,10 @@ Index: lang/rust/files/patch-ino64
 +-        pub st_mode: ::mode_t,
 +         pub st_nlink: ::nlink_t,
 ++        pub st_mode: ::mode_t,
-++	pub st_pad0: ::uint16_t,
+++        pub st_pad0: ::uint16_t,
 +         pub st_uid: ::uid_t,
 +         pub st_gid: ::gid_t,
-++	pub st_pad1: ::uint32_t,
+++        pub st_pad1: ::uint32_t,
 +         pub st_rdev: ::dev_t,
 +         pub st_atime: ::time_t,
 +         pub st_atime_nsec: ::c_long,
@@ -319,8 +319,8 @@ Index: lang/rust/files/patch-ino64
 ++        pub st_lspare: [::uint64_t; 10],
 +     }
 + }
-+--- src/liblibc/src/unix/bsd/freebsdlike/freebsd/x86_64.rs.orig	2017-04-08 22:48:52.848685000 +0000
-++++ src/liblibc/src/unix/bsd/freebsdlike/freebsd/x86_64.rs	2017-04-08 22:51:19.715863000 +0000
++--- src/liblibc/src/unix/bsd/freebsdlike/freebsd/x86_64.rs.orig	2017-03-10 22:56:40.000000000 +0000
+++++ src/liblibc/src/unix/bsd/freebsdlike/freebsd/x86_64.rs	2017-04-11 21:45:22.796120000 +0000
 +@@ -7,10 +7,12 @@
 +     pub struct stat {
 +         pub st_dev: ::dev_t,
@@ -328,10 +328,10 @@ Index: lang/rust/files/patch-ino64
 +-        pub st_mode: ::mode_t,
 +         pub st_nlink: ::nlink_t,
 ++        pub st_mode: ::mode_t,
-++	pub st_pad0: ::uint16_t,
+++        pub st_pad0: ::uint16_t,
 +         pub st_uid: ::uid_t,
 +         pub st_gid: ::gid_t,
-++	pub st_pad1: ::uint32_t,
+++        pub st_pad1: ::uint32_t,
 +         pub st_rdev: ::dev_t,
 +         pub st_atime: ::time_t,
 +         pub st_atime_nsec: ::c_long,
@@ -353,14 +353,175 @@ Index: lang/rust/files/patch-ino64
 ++        pub st_spare: [::int64_t; 10],
 +     }
 + }
-+--- src/liblibc/src/unix/bsd/freebsdlike/mod.rs.orig	2017-04-08 22:53:10.232283000 +0000
-++++ src/liblibc/src/unix/bsd/freebsdlike/mod.rs	2017-04-08 22:53:34.912151000 +0000
++--- src/liblibc/src/unix/bsd/freebsdlike/mod.rs.orig	2017-03-10 22:56:40.000000000 +0000
+++++ src/liblibc/src/unix/bsd/freebsdlike/mod.rs	2017-04-11 21:04:20.804982000 +0000
 +@@ -1,4 +1,4 @@
 +-pub type dev_t = u32;
 ++pub type dev_t = u64;
 + pub type mode_t = u16;
 + pub type pthread_attr_t = *mut ::c_void;
 + pub type rlim_t = i64;
++--- src/vendor/libc/src/unix/bsd/freebsdlike/freebsd/x86_64.rs.orig	2017-03-10 22:55:22.000000000 +0000
+++++ src/vendor/libc/src/unix/bsd/freebsdlike/freebsd/x86_64.rs	2017-04-11 21:45:52.076503000 +0000
++@@ -7,10 +7,12 @@
++     pub struct stat {
++         pub st_dev: ::dev_t,
++         pub st_ino: ::ino_t,
++-        pub st_mode: ::mode_t,
++         pub st_nlink: ::nlink_t,
+++        pub st_mode: ::mode_t,
+++        pub st_pad0: u16,
++         pub st_uid: ::uid_t,
++         pub st_gid: ::gid_t,
+++        pub st_pad1: ::u32,
++         pub st_rdev: ::dev_t,
++         pub st_atime: ::time_t,
++         pub st_atime_nsec: ::c_long,
++@@ -18,13 +20,13 @@
++         pub st_mtime_nsec: ::c_long,
++         pub st_ctime: ::time_t,
++         pub st_ctime_nsec: ::c_long,
+++        pub st_birthtime: ::time_t,
+++        pub st_birthtime_nsec: ::c_long,
++         pub st_size: ::off_t,
++         pub st_blocks: ::blkcnt_t,
++         pub st_blksize: ::blksize_t,
++         pub st_flags: ::fflags_t,
++-        pub st_gen: ::uint32_t,
++-        pub st_lspare: ::int32_t,
++-        pub st_birthtime: ::time_t,
++-        pub st_birthtime_nsec: ::c_long,
+++        pub st_gen: ::uint64_t,
+++        pub st_spare: [u64; 10],
++     }
++ }
++--- src/vendor/libc/src/unix/bsd/freebsdlike/freebsd/mod.rs.orig	2017-03-10 22:55:22.000000000 +0000
+++++ src/vendor/libc/src/unix/bsd/freebsdlike/freebsd/mod.rs	2017-04-11 21:04:20.805617000 +0000
++@@ -1,7 +1,7 @@
++ pub type fflags_t = u32;
++ pub type clock_t = i32;
++-pub type ino_t = u32;
++-pub type nlink_t = u16;
+++pub type ino_t = u64;
+++pub type nlink_t = u64;
++ pub type blksize_t = u32;
++ pub type clockid_t = ::c_int;
++ 
++@@ -10,10 +10,12 @@
++ 
++ s! {
++     pub struct dirent {
++-        pub d_fileno: u32,
+++        pub d_fileno: u64,
+++        pub d_off: u64,
++         pub d_reclen: u16,
++         pub d_type: u8,
++         pub d_namlen: u8,
+++        pub d_pad0: u32,
++         pub d_name: [::c_char; 256],
++     }
++ 
++--- src/vendor/libc/src/unix/bsd/freebsdlike/freebsd/x86.rs.orig	2017-04-11 21:46:38.725268000 +0000
+++++ src/vendor/libc/src/unix/bsd/freebsdlike/freebsd/x86.rs	2017-04-11 21:48:08.639323000 +0000
++@@ -7,10 +7,12 @@
++     pub struct stat {
++         pub st_dev: ::dev_t,
++         pub st_ino: ::ino_t,
++-        pub st_mode: ::mode_t,
++         pub st_nlink: ::nlink_t,
+++        pub st_mode: ::mode_t,
+++        pub st_pad0: u16,
++         pub st_uid: ::uid_t,
++         pub st_gid: ::gid_t,
+++        pub st_pad1: u32,
++         pub st_rdev: ::dev_t,
++         pub st_atime: ::time_t,
++         pub st_atime_nsec: ::c_long,
++@@ -18,14 +20,13 @@
++         pub st_mtime_nsec: ::c_long,
++         pub st_ctime: ::time_t,
++         pub st_ctime_nsec: ::c_long,
+++        pub st_birthtime: ::time_t,
+++        pub st_birthtime_nsec: ::c_long,
++         pub st_size: ::off_t,
++         pub st_blocks: ::blkcnt_t,
++         pub st_blksize: ::blksize_t,
++         pub st_flags: ::fflags_t,
++-        pub st_gen: ::uint32_t,
++-        pub st_lspare: ::int32_t,
++-        pub st_birthtime: ::time_t,
++-        pub st_birthtime_nsec: ::c_long,
++-        __unused: [u8; 8],
+++        pub st_gen: ::uint64_t,
+++        pub st_spare: [u64; 10],
++     }
++ }
++--- src/vendor/libc/src/unix/bsd/freebsdlike/mod.rs.orig	2017-03-10 22:55:22.000000000 +0000
+++++ src/vendor/libc/src/unix/bsd/freebsdlike/mod.rs	2017-04-11 21:04:20.806061000 +0000
++@@ -1,4 +1,4 @@
++-pub type dev_t = u32;
+++pub type dev_t = u64;
++ pub type mode_t = u16;
++ pub type pthread_attr_t = *mut ::c_void;
++ pub type rlim_t = i64;
++--- src/libstd/os/freebsd/raw.rs.orig	2017-03-10 22:55:21.000000000 +0000
+++++ src/libstd/os/freebsd/raw.rs	2017-04-11 21:04:20.806366000 +0000
++@@ -38,19 +38,23 @@
++ #[stable(feature = "raw_ext", since = "1.1.0")]
++ pub struct stat {
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++-    pub st_dev: u32,
+++    pub st_dev: u64,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++-    pub st_ino: u32,
+++    pub st_ino: u64,
+++    #[stable(feature = "raw_ext", since = "1.1.0")]
+++    pub st_nlink: u64,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++     pub st_mode: u16,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++-    pub st_nlink: u16,
+++    pub st_pad0: u16,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++     pub st_uid: u32,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++     pub st_gid: u32,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++-    pub st_rdev: u32,
+++    pub st_pad1: u32,
+++    #[stable(feature = "raw_ext", since = "1.1.0")]
+++    pub st_rdev: u64,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++     pub st_atime: c_long,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++@@ -64,6 +68,10 @@
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++     pub st_ctime_nsec: c_long,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
+++    pub st_birthtime: c_long,
+++    #[stable(feature = "raw_ext", since = "1.1.0")]
+++    pub st_birthtime_nsec: c_long,
+++    #[stable(feature = "raw_ext", since = "1.1.0")]
++     pub st_size: i64,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++     pub st_blocks: i64,
++@@ -72,14 +80,8 @@
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++     pub st_flags: u32,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++-    pub st_gen: u32,
++-    #[stable(feature = "raw_ext", since = "1.1.0")]
++-    pub st_lspare: i32,
+++    pub st_gen: u64,
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++-    pub st_birthtime: c_long,
++-    #[stable(feature = "raw_ext", since = "1.1.0")]
++-    pub st_birthtime_nsec: c_long,
++-    #[cfg(target_arch = "x86")]
++     #[stable(feature = "raw_ext", since = "1.1.0")]
++-    pub __unused: [u8; 8],
+++    pub st_spare: [u64; 10],
++ }
 
 Property changes on: lang/rust/files/patch-ino64
 ___________________________________________________________________
