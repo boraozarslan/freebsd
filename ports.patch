@@ -252,6 +252,87 @@ Added: svn:mime-type
 ## -0,0 +1 ##
 +text/plain
 \ No newline at end of property
+Index: lang/rust/Makefile
+===================================================================
+--- lang/rust/Makefile	(revision 437869)
++++ lang/rust/Makefile	(working copy)
+@@ -131,6 +131,9 @@
+ 		exit 1;\
+ 	fi
+ 
++LIBSTD=	rust-std-1.15.1-x86_64-unknown-freebsd/rust-std-x86_64-unknown-freebsd/lib/rustlib/x86_64-unknown-freebsd/lib/libstd-2057375968b67ddb.rlib
++STDF=	std-2057375968b67ddb.0.o
++
+ post-extract:
+ 	@${MKDIR} \
+ 		${WRKSRC}/build/cache/${RUST_BOOTSTRAP_DIR} \
+@@ -137,10 +140,16 @@
+ 		${WRKSRC}/build/cache/${CARGO_BOOTSTRAP_DIR}
+ 	${LN} -sf ${DISTDIR}/${DIST_SUBDIR}/${RUSTC_BOOTSTRAP} \
+ 		${WRKSRC}/build/cache/${RUST_BOOTSTRAP_DIR}
+-	${LN} -sf ${DISTDIR}/${DIST_SUBDIR}/${RUST_STD_BOOTSTRAP} \
+-		${WRKSRC}/build/cache/${RUST_BOOTSTRAP_DIR}
+ 	${LN} -sf ${DISTDIR}/${DIST_SUBDIR}/${CARGO_BOOTSTRAP} \
+ 		${WRKSRC}/build/cache/${CARGO_BOOTSTRAP_DIR}
++	${TAR} -x -C ${WRKSRC} -f ${DISTDIR}/${DIST_SUBDIR}/${RUST_STD_BOOTSTRAP}
++	${CC} ${CFLAGS} -c -o ${WRKSRC}/old_fstat.o ${FILESDIR}/old_fstat.c
++	(cd ${WRKSRC} && ${AR} x ${WRKSRC}/${LIBSTD} ${STDF})
++	${LD} -r -o ${WRKSRC}/std.xx.o ${WRKSRC}/${STDF} ${WRKSRC}/old_fstat.o
++	${MV} ${WRKSRC}/std.xx.o ${WRKSRC}/${STDF}
++	(cd ${WRKSRC} && ${AR} r ${WRKSRC}/${LIBSTD} ${STDF})
++	${TAR} -cy -C ${WRKSRC} -f ${WRKSRC}/rustc.tbz rust-std-1.15.1-x86_64-unknown-freebsd
++	${MV} ${WRKSRC}/rustc.tbz ${WRKSRC}/build/cache/${RUST_STD_BOOTSTRAP}
+ 
+ post-patch:
+ 	@test ! -f ${WRKSRC}/mk/main.mk || \
+Index: lang/rust/files/old_fstat.c
+===================================================================
+--- lang/rust/files/old_fstat.c	(nonexistent)
++++ lang/rust/files/old_fstat.c	(working copy)
+@@ -0,0 +1,32 @@
++#include <sys/syscall.h>
++#include <unistd.h>
++
++struct stat;
++
++int
++fstat(int fd, struct stat *sb)
++{
++
++	return (syscall(SYS_freebsd11_fstat, fd, sb));
++}
++
++int
++stat(const char *path, struct stat *sb)
++{
++
++	return (syscall(SYS_freebsd11_stat, path, sb));
++}
++
++int
++lstat(const char *path, struct stat *sb)
++{
++
++	return (syscall(SYS_freebsd11_lstat, path, sb));
++}
++
++int
++fstatat(int fd, const char *path, struct stat *sb, int flag)
++{
++
++	return (syscall(SYS_freebsd11_fstatat, fd, path, sb, flag));
++}
+
+Property changes on: lang/rust/files/old_fstat.c
+___________________________________________________________________
+Added: svn:eol-style
+## -0,0 +1 ##
++native
+\ No newline at end of property
+Added: svn:mime-type
+## -0,0 +1 ##
++text/plain
+\ No newline at end of property
 Index: lang/rust/files/patch-ino64
 ===================================================================
 --- lang/rust/files/patch-ino64	(nonexistent)
