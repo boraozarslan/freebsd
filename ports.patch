@@ -275,7 +275,7 @@ Index: lang/rust/Makefile
  	${LN} -sf ${DISTDIR}/${DIST_SUBDIR}/${CARGO_BOOTSTRAP} \
  		${WRKSRC}/build/cache/${CARGO_BOOTSTRAP_DIR}
 +	${TAR} -x -C ${WRKSRC} -f ${DISTDIR}/${DIST_SUBDIR}/${RUST_STD_BOOTSTRAP}
-+	${CC} ${CFLAGS} -c -o ${WRKSRC}/old_fstat.o ${FILESDIR}/old_fstat.c
++	${CC} ${CFLAGS} -fPIC -c -o ${WRKSRC}/old_fstat.o ${FILESDIR}/old_fstat.c
 +	(cd ${WRKSRC} && ${AR} x ${WRKSRC}/${LIBSTD} ${STDF})
 +	${LD} -r -o ${WRKSRC}/std.xx.o ${WRKSRC}/${STDF} ${WRKSRC}/old_fstat.o
 +	${MV} ${WRKSRC}/std.xx.o ${WRKSRC}/${STDF}
@@ -289,7 +289,7 @@ Index: lang/rust/files/old_fstat.c
 ===================================================================
 --- lang/rust/files/old_fstat.c	(nonexistent)
 +++ lang/rust/files/old_fstat.c	(working copy)
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,78 @@
 +#include <sys/syscall.h>
 +#include <unistd.h>
 +
@@ -321,6 +321,52 @@ Index: lang/rust/files/old_fstat.c
 +{
 +
 +	return (syscall(SYS_freebsd11_fstatat, fd, path, sb, flag));
++}
++
++struct ODIR;
++struct freebsd11_dirent;
++
++__asm(".symver  old_readdir, readdir@FBSD_1.0");
++int old_readdir(struct ODIR *);
++int
++readdir(struct ODIR *dirp)
++{
++
++	return (old_readdir(dirp));
++}
++
++__asm(".symver  old_readdir_r, readdir_r@FBSD_1.0");
++int old_readdir_r(struct ODIR *, struct freebsd11_dirent *,
++    struct freebsd11_dirent **);
++int
++readdir_r(struct ODIR *dirp, struct freebsd11_dirent *entry,
++    struct freebsd11_dirent **result)
++{
++
++	return (old_readdir_r(dirp, entry, result));
++}
++
++__asm(".symver	old_scandir, scandir@FBSD_1.0");
++int old_scandir(const char *, struct freebsd11_dirent ***,
++    int (*)(const struct freebsd11_dirent *),
++    int (*)(const struct freebsd11_dirent **,
++	const struct freebsd11_dirent **));
++int
++scandir(const char *dirname, struct freebsd11_dirent ***namelist,
++    int (*select)(const struct freebsd11_dirent *),
++    int (*dcomp)(const struct freebsd11_dirent **,
++	const struct freebsd11_dirent **))
++{
++
++	return (old_scandir(dirname, namelist, select, dcomp));
++}
++
++struct old_statfs;
++int
++fstatfs(int fd, struct old_statfs *buf)
++{
++
++	return (syscall(SYS_freebsd11_fstatfs, fd, buf));
 +}
 
 Property changes on: lang/rust/files/old_fstat.c
