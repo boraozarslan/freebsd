@@ -53,7 +53,7 @@ __FBSDID("$FreeBSD$");
 
 #include "gen-compat.h"
 
-static int
+static void
 freebsd11_cvtdirent(struct freebsd11_dirent *dstdp, struct dirent *srcdp)
 {
 
@@ -65,26 +65,23 @@ freebsd11_cvtdirent(struct freebsd11_dirent *dstdp, struct dirent *srcdp)
 	bzero(dstdp->d_name + dstdp->d_namlen,
 	    dstdp->d_reclen - offsetof(struct freebsd11_dirent, d_name) -
 	    dstdp->d_namlen);
-	return (0);
 }
 
 struct freebsd11_dirent *
 freebsd11_readdir(DIR *dirp)
 {
-	static struct freebsd11_dirent *compatbuf;
 	struct freebsd11_dirent *dstdp;
 	struct dirent *dp;
 
 	if (__isthreaded)
 		_pthread_mutex_lock(&dirp->dd_lock);
-again:
 	dp = _readdir_unlocked(dirp, 1);
 	if (dp != NULL) {
-		if (compatbuf == NULL)
-			compatbuf = malloc(sizeof(struct freebsd11_dirent));
-		if (freebsd11_cvtdirent(compatbuf, dp) != 0)
-			goto again;
-		dstdp = compatbuf;
+		if (dirp->dd_compat_de == NULL)
+			dirp->dd_compat_de = malloc(sizeof(struct
+			    freebsd11_dirent));
+		freebsd11_cvtdirent(dirp->dd_compat_de, dp);
+		dstdp = dirp->dd_compat_de;
 	} else
 		dstdp = NULL;
 	if (__isthreaded)
