@@ -94,18 +94,14 @@ int
 freebsd11_readdir_r(DIR *dirp, struct freebsd11_dirent *entry,
     struct freebsd11_dirent **result)
 {
-	struct dirent xentry;
-	struct dirent *xresult;
+	struct dirent xentry, *xresult;
 	int error;
 
-again:
 	error = readdir_r(dirp, &xentry, &xresult);
-
 	if (error != 0)
 		return (error);
 	if (xresult != NULL) {
-		if (freebsd11_cvtdirent(entry, &xentry) != 0)
-			goto again;
+		freebsd11_cvtdirent(entry, &xentry);
 		*result = entry;
 	} else
 		*result = NULL;
