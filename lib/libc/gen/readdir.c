@@ -104,7 +104,7 @@ readdir(DIR *dirp)
 }
 
 int
-readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
+__readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
 {
 	struct dirent *dp;
 	int saved_errno;
@@ -132,4 +132,11 @@ readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
 		*result = NULL;
 
 	return (0);
+}
+
+int
+readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
+{
+
+	return (__readdir_(dirp, entry, result));
 }
