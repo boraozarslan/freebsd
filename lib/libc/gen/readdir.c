@@ -138,5 +138,5 @@ int
 readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
 {
 
-	return (__readdir_(dirp, entry, result));
+	return (__readdir_r(dirp, entry, result));
 }
