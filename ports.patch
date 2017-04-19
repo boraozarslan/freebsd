@@ -289,8 +289,11 @@ Index: lang/rust/files/old_fstat.c
 ===================================================================
 --- lang/rust/files/old_fstat.c	(nonexistent)
 +++ lang/rust/files/old_fstat.c	(working copy)
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,97 @@
 +#include <sys/syscall.h>
++#include <dlfcn.h>
++#include <stdio.h>
++#include <stdlib.h>
 +#include <unistd.h>
 +
 +struct stat;
@@ -342,8 +345,24 @@ Index: lang/rust/files/old_fstat.c
 +readdir_r(struct ODIR *dirp, struct freebsd11_dirent *entry,
 +    struct freebsd11_dirent **result)
 +{
++	void *libc;
++	void *fptr;
++	int error;
 +
-+	return (old_readdir_r(dirp, entry, result));
++	libc = dlopen("libc.so.7", RTLD_LAZY | RTLD_GLOBAL);
++	if (libc == NULL) {
++		fprintf(stderr, "libc open: %s\n", dlerror());
++		abort();
++	}
++	fptr = dlvsym(libc, "readdir_r", "FBSD_1.0");
++	if (fptr == NULL) {
++		fprintf(stderr, "readdir_r: %s\n", dlerror());
++		abort();
++	}
++	error = ((int (*)(struct ODIR *, struct freebsd11_dirent *,
++	    struct freebsd11_dirent **))fptr)(dirp, entry, result);
++	dlclose(libc);
++	return (error);
 +}
 +
 +__asm(".symver	old_scandir, scandir@FBSD_1.0");
