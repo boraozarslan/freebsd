@@ -156,44 +156,44 @@ lang/rust in the topic branch as ports.patch, and llvm38 can be fixed
 in the same way as llvm39 and llvm40. Assistance with investigating
 and fixing the port failures will be greatly appreciated.
 
-Below is the overview of the problems and proposed solutions, probably
+Below is an overview of the problems and proposed solutions, probably
 mostly relevant to the ports maintainers.
 
 5.1. LLVM
 
-LLVM includes a component called ASAN, which tries to intercept
-syscalls, and interns the knowledge of the system structures layouts.
-Since stat and lstat syscalls were removed, and several types and
-structures changed, this has to be reflected in the ASAN hacks.
+LLVM includes a component called Address Sanitizer or ASAN, which tries
+to intercept syscalls, and contains knowledge of the layout of many
+system structures.  Since stat and lstat syscalls were removed and
+several types and structures changed, this has to be reflected in the
+ASAN hacks.
 
 5.2. lang/ghc
 
 The ghc compiler and parts of the runtime are written in Haskell,
 which means that to compile ghc, you need a working Haskell compiler
-for bootstrap.  By default for ghc, runtime is provided in the form of
-the static libraries.  Static libraries reference default versions of
+for bootstrap.  By default for ghc, the runtime is provided in the form
+of static libraries.  Static libraries reference default versions of
 libc symbols, which are assigned the ELF symbol version at the final
-linking stage.  As result, using such libraries get you updated
-syscall, but internally code still assumes the old system types.  The
-end result is the random memory corruption because both libc and
+linking stage.  As result, using such libraries results in using the
+updated syscall, but internally the code still uses old system types.
+The end result is the random memory corruption because both libc and
 kernel assume new types.
 
-This situation cannot be fixed by the symbol versioning, because
-versioning acts too late.  Instead, we hacked the bootstrap compiler
-by providing symbols for modified syscalls in the shipped static
-libraries, which symbols direct execution to the compat variants of
-the syscalls.  This allows the bootstrap compiler to generate working
-code.  After the stage0, compiler operates on new structures and
-things stabilize.
+This situation cannot be fixed by symbol versioning, because versioning
+acts too late.  Instead, we hacked the bootstrap compiler by providing
+symbols for modified syscalls in the shipped static libraries, which
+symbols direct execution to the compat variants of the syscalls.  This
+allows the bootstrap compiler to generate working code.  After the
+stage0, compiler operates on new structures and things stabilize.
 
-Real solution is, of course, to re-package the bootstrap compiler, but
-for some time we need to support pre-ino64 HEAD in ports.  Also,
-learning full bag of the GHC maintainance duties, required for that,
-is too much for the task.
+The real solution is, of course, to re-package the bootstrap compiler,
+but for some time we need to support pre-ino64 HEAD in ports.  Also,
+learning full scope of GHC maintainance duties, required for that,
+is too much for the ino64 task.
 
 5.3. lang/rust
 
-Rustc has similar structure to GHC, and same issue.  The same solution
+Rustc has a similar structure to GHC, and same issue.  The same solution
 of patching the bootstrap was done.
 
 Also rust libstd and liblibc provide rustified definitions of the
