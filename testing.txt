@@ -30,7 +30,7 @@ names.
 ABI breakage is mitigated by providing compatibility using versioned
 symbols, ingenious use of the existing padding in structures, and by
 employing other tricks.  Unfortunately, not everything can be fixed,
-especially oustide the base system.  For instance, third-party APIs
+especially outside the base system.  For instance, third-party APIs
 which pass struct stat around are broken in backward and forward-
 incompatible way.
 
