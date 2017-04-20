@@ -85,6 +85,15 @@ To fetch the patch from Phabricator:
 Or
 % arc patch D10439
 
+After that, in the checkout directory do
+% (cd sys/kern && touch syscalls.master && make sysent)
+% (cd sys/compat/freebsd32 && touch syscalls.master && make sysent)
+If you use custom kernel configuration, ensure that
+	options COMPAT_FREEBSD11
+is included into the config.  Then build world and kernel in the
+usual way, install kernel, reboot, install new world.  Do not make
+shortcuts in the update procedure.
+
 4.1 New kernel, old world.
 
 Build and install pristine HEAD world, apply patch and only build and
