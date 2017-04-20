@@ -71,11 +71,11 @@ To clone from GitHub:
 % git clone -b ino64 https://github.com/FreeBSDFoundation/freebsd.git
 
 To fetch the patch from Phabricator:
-- URL
+- https://reviews.freebsd.org/D10439
 - Click download raw diff from the right
 
 Or
-% arc patch D12345
+% arc patch D10439
 
 4.1 New kernel, old world.
 
