@@ -1,20 +1,38 @@
+To: freebsd-current, freebsd-fs(?)
+Subject: 64-bit inodes (ino64) Status Update and Call for Testing
+
+Inodes are data structures corresponding to objects in a file system,
+such as files and directories. FreeBSD has historically used 32-bit
+values to identify inodes, which limits file systems to somewhat under
+2^32 objects. Many modern file systems internally use 64-bit identifiers
+and FreeBSD needs to follow suit to properly and fully support these
+file systems.
+
+The 64-bit inode project, also known as ino64, started life in 2009 or so
+in a project branch by Google Summer of Code student Gleb Kurtsou. Since
+then many people have had a hand in updating it and addressing
+regressions, and as part of the path to being committed to head it is now
+ready for wider testing.
+
 This note explains how to perform useful testing of the ino64 branch,
-beyond usual checks.
+beyond typical smoke tests.
 
 1. Overview.
-The ino64 branch extends the basic system types ino_t, dev_t from
-32bit to 64bit, and nlink_t from 16bit to 64bit.  The struct dirent is
-modified, besides expected layout change due to ino_t, also get d_off
-members.  Since we are taking the ABI breakage, struct statfs
-f_mntfromname[] and f_mntonname[] arrays length MNAMELEN is increased
-from 88 to 1024, which should allow longer mount path names.
 
-The work is done to mitigate the ABI breakage, by providing
-compatibility utilizing symbol version, ingenious use of the existing
-padding in structures, and by employing other tricks.  Unfortunately,
-not everything can be fixed, especially oustide the base system.  For
-instance, third-party APIs which pass struct stat around are broken in
-backward and forward-incompatible way.
+The ino64 branch extends the basic system types ino_t and dev_t from
+32-bit to 64-bit, and nlink_t from 16-bit to 64-bit.  The struct dirent
+layout is modified due to the larger size of ino_t, and also gains a
+d_off (directory offset) member. As ino64 implies an ABI change anyway
+the struct statfs f_mntfromname[] and f_mntonname[] array length
+MNAMELEN is increased from 88 to 1024, to allow for longer mount path
+names.
+
+ABI breakage is mitigated by providing compatibility using versioned
+symbols, ingenious use of the existing padding in structures, and by
+employing other tricks.  Unfortunately, not everything can be fixed,
+especially oustide the base system.  For instance, third-party APIs
+which pass struct stat around are broken in backward and forward-
+incompatible way.
 
 2. Motivation.
 
@@ -44,23 +62,41 @@ reporting 64bit dev_t, for the sake of pstat.
 
 4. Testing procedure.
 
+The ino64 project can be tested by cloning the project branch from
+GitHub or by applying the patch <from the Phabricator review | located
+at URL | attached> to a working tree.
+
+To clone from GitHub:
+% git clone -b ino64 https://github.com/FreeBSDFoundation/freebsd.git
+
+To fetch the patch from Phabricator:
+- URL
+- Click download raw diff from the right
+
+Or
+% arc patch D12345
+
 4.1 New kernel, old world.
+
 Build and install pristine HEAD world, apply patch and only build and
 install updated kernel. The system must work same as with the pristine
 kernel.
 
 4.2 New kernel, new world, old third-party applications.
+
 Build and install patched kernel and world.  Applications compiled on the
 pristine HEAD (e.g. installed by pkg from the regular portmgr builds) must
 work without a regression.
 
 4.3 32bit compat.
+
 Same as 4.1 and 4.2, but for 32bit (i386) binaries on the amd64 host.
 Note that big-endian host, like powerpc, might expose additional
 bugs in the 32bit compat with the patch, but the testing is too cumbersome
 to arrange.
 
 4.4 Targeted tests.
+
 Useful programs to check items 4.1, 4.2 and 4.3 are versions of the
 following programs, taken from the pristine system:
 
@@ -77,12 +113,14 @@ following programs, taken from the pristine system:
   and compat shims in libc are non-trivial.
 
 4.5 NFS server and client test.
+
 Check that the NFS server in the patched kernel operates correctly and without
 performance regressions.  Same for client.
 NFS should be checked for all four combination of patched/unpatched
 kernel server/client, because the filehandle format includes inode number.
 
 4.6 Other filesystems
+
 Generally, filesystems should see no change in the system behaviour,
 since patch goal is to provide space to grow in the ABI.  In
 particular, local filesystem layout must stay same.  Of course, it is
@@ -92,7 +130,26 @@ format would be broken.  We do not expect this to slip in, but it is
 possible and should be watched for.
 
 4.7 Test accounting
+
 The process accounting, as documented in acct(5), changed format of
 the records due to dev_t increase.  Verify that the programs like
 sa(8) and accton(8) correctly work with both old and new accounting
 records.
+
+5. Ports Status with ino64
+
+A ports exp-run for ino64 is open in PR 218320. The failing ports each
+responsible for more than 1 skipped port are:
+
+lang/ghc			497
+multimedia/webcamd		62
+lang/gcc6-aux			54
+devel/libgtop			39
+sysutils/py-psutil		13
+devel/llvm38			6
+lang/rust			4
+sysutils/py-psutil121		3
+
+Patches are available for lang/ghc and lang/rust, and llvm38 can be
+fixed in the same way as llvm39 and llvm40. Assistance with
+investigating and fixing the port failures will be greatly appreciated.
