@@ -1,4 +1,4 @@
-To: freebsd-current, freebsd-fs(?)
+To: freebsd-current, freebsd-fs, freebsd-ports
 Subject: 64-bit inodes (ino64) Status Update and Call for Testing
 
 Inodes are data structures corresponding to objects in a file system,
