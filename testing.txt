@@ -154,3 +154,48 @@ Patches are available for lang/llvm39, lang/llvm40, lang/ghc, and
 lang/rust in the topic branch as ports.patch, and llvm38 can be fixed
 in the same way as llvm39 and llvm40. Assistance with investigating
 and fixing the port failures will be greatly appreciated.
+
+Below is the overview of the problems and proposed solutions, probably
+mostly relevant to the ports maintainers.
+
+5.1. LLVM
+
+LLVM includes a component called ASAN, which tries to intercept
+syscalls, and interns the knowledge of the system structures layouts.
+Since stat and lstat syscalls were removed, and several types and
+structures changed, this has to be reflected in the ASAN hacks.
+
+5.2. lang/ghc
+
+The ghc compiler and parts of the runtime are written in Haskell,
+which means that to compile ghc, you need a working Haskell compiler
+for bootstrap.  By default for ghc, runtime is provided in the form of
+the static libraries.  Static libraries reference default versions of
+libc symbols, which are assigned the ELF symbol version at the final
+linking stage.  As result, using such libraries get you updated
+syscall, but internally code still assumes the old system types.  The
+end result is the random memory corruption because both libc and
+kernel assume new types.
+
+This situation cannot be fixed by the symbol versioning, because
+versioning acts too late.  Instead, we hacked the bootstrap compiler
+by providing symbols for modified syscalls in the shipped static
+libraries, which symbols direct execution to the compat variants of
+the syscalls.  This allows the bootstrap compiler to generate working
+code.  After the stage0, compiler operates on new structures and
+things stabilize.
+
+Real solution is, of course, to re-package the bootstrap compiler, but
+for some time we need to support pre-ino64 HEAD in ports.  Also,
+learning full bag of the GHC maintainance duties, required for that,
+is too much for the task.
+
+5.3. lang/rust
+
+Rustc has similar structure to GHC, and same issue.  The same solution
+of patching the bootstrap was done.
+
+Also rust libstd and liblibc provide rustified definitions of the
+system structures, which were updated to reflect the updated layout.
+I failed to understand why e.g. struct stat has to be defined in 3
+places at least, but all found locations were patched.
