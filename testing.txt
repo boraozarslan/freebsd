@@ -150,6 +150,7 @@ devel/llvm38			6
 lang/rust			4
 sysutils/py-psutil121		3
 
-Patches are available for lang/ghc and lang/rust, and llvm38 can be
-fixed in the same way as llvm39 and llvm40. Assistance with
-investigating and fixing the port failures will be greatly appreciated.
+Patches are available for lang/llvm39, lang/llvm40, lang/ghc, and
+lang/rust in the topic branch as ports.patch, and llvm38 can be fixed
+in the same way as llvm39 and llvm40. Assistance with investigating
+and fixing the port failures will be greatly appreciated.
