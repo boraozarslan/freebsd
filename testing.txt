@@ -64,7 +64,8 @@ reporting 64bit dev_t, for the sake of pstat.
 
 The ino64 project can be tested by cloning the project branch from
 GitHub or by applying the patch <from the Phabricator review | located
-at URL | attached> to a working tree.
+at URL | attached> to a working tree.  The authorative source is the
+GitHub, I do not promise to update the review for each update.
 
 To clone from GitHub:
 % git clone -b ino64 https://github.com/FreeBSDFoundation/freebsd.git
