@@ -14,13 +14,14 @@ people have had a hand in updating it and addressing regressions, after
 mckusick@ picked up and updated the patch, and acted as a flag-waver.
 
 Sponsored by the FreeBSD Foundation I have spent a significant effort
-on outstanding issues and integration -- fixing NFS and ZFS, addressing
-ABI compat issues and investigating and fixing ports failures.
-rmacklem@ provided feedback on NFS changes, emaste@ and jhb@ provided
-feedback and review on the ABI transition support. pho@ performed
-extensive testing and identified a number of issues that have now been
-fixed.  kris@ performed an initial ports investigation followed by an
-exp-run by antoine@.
+on outstanding issues and integration -- fixing compat32 ABI, NFS and
+ZFS, addressing ABI compat issues and investigating and fixing ports
+failures.  rmacklem@ provided feedback on NFS changes, emaste@ and
+jhb@ provided feedback and review on the ABI transition support. pho@
+performed extensive testing and identified a number of issues that
+have now been fixed.  kris@ performed an initial ports investigation
+followed by an exp-run by antoine@. emaste@ helped with organization
+of the process.
 
 This note explains how to perform useful testing of the ino64 branch,
 beyond typical smoke tests.
