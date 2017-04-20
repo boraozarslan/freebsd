@@ -200,3 +200,19 @@ Also rust libstd and liblibc provide rustified definitions of the
 system structures, which were updated to reflect the updated layout.
 I failed to understand why e.g. struct stat has to be defined in 3
 places at least, but all found locations were patched.
+
+6. Next Steps
+
+The tentative schedule for the ino64 project:
+
+2017-04-20 Post wide call for testing
+
+           Investigate and address port failures with maintainer support
+
+2017-05-05 Request second exp-run with initial patches applied
+
+           Investigate and address port failures with maintainer support
+
+2017-05-19 Commit to HEAD
+
+           Address post-commit failures where feasible
