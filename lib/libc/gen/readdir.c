@@ -134,9 +134,4 @@ __readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
 	return (0);
 }
 
-int
-readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
-{
-
-	return (__readdir_r(dirp, entry, result));
-}
+__strong_reference(__readdir_r, readdir_r);
