@@ -1,3 +1,64 @@
+Index: devel/libgtop/files/patch-ino64
+===================================================================
+--- devel/libgtop/files/patch-ino64	(nonexistent)
++++ devel/libgtop/files/patch-ino64	(working copy)
+@@ -0,0 +1,41 @@
++--- sysdeps/freebsd/procopenfiles.c.orig	2014-10-12 07:17:26.000000000 +0000
+++++ sysdeps/freebsd/procopenfiles.c	2017-04-22 17:17:54.862169000 +0000
++@@ -322,12 +322,12 @@
++ 				struct sockaddr_un *sun;
++ 
++ 				entry.type = GLIBTOP_FILE_TYPE_LOCALSOCKET;
++-				sun = (struct sockaddr_un *)&kif->kf_sa_local;
+++				sun = (struct sockaddr_un *)&kif->kf_un.kf_sock.kf_sa_local;
++ 
++ 				if (sun->sun_path[0]) {
++ 					char *addrstr;
++ 
++-					addrstr = addr_to_string(&kif->kf_sa_local);
+++					addrstr = addr_to_string(&kif->kf_un.kf_sock.kf_sa_local);
++ 					g_strlcpy(entry.info.localsock.name,
++ 						  addrstr,
++ 						  sizeof(entry.info.localsock.name));
++@@ -335,7 +335,7 @@
++ 				} else {
++ 					char *addrstr;
++ 
++-					addrstr = addr_to_string(&kif->kf_sa_peer);
+++					addrstr = addr_to_string(&kif->kf_un.kf_sock.kf_sa_peer);
++ 					g_strlcpy(entry.info.localsock.name,
++ 						  addrstr,
++ 						  sizeof(entry.info.localsock.name));
++@@ -349,12 +349,12 @@
++ 					entry.type = GLIBTOP_FILE_TYPE_INETSOCKET;
++ 				else
++ 					entry.type = GLIBTOP_FILE_TYPE_INET6SOCKET;
++-				addrstr = addr_to_string(&kif->kf_sa_peer);
+++				addrstr = addr_to_string(&kif->kf_un.kf_sock.kf_sa_peer);
++ 				g_strlcpy(entry.info.sock.dest_host,
++ 					  addrstr,
++ 					  sizeof(entry.info.sock.dest_host));
++ 				g_free(addrstr);
++-				entry.info.sock.dest_port = addr_to_port(&kif->kf_sa_peer);
+++				entry.info.sock.dest_port = addr_to_port(&kif->kf_un.kf_sock.kf_sa_peer);
++ 			}
++ 		} else if (kif->kf_type == KF_TYPE_PIPE) {
++ 			entry.type = GLIBTOP_FILE_TYPE_PIPE;
+
+Property changes on: devel/libgtop/files/patch-ino64
+___________________________________________________________________
+Added: fbsd:nokeywords
+## -0,0 +1 ##
++yes
+\ No newline at end of property
+Added: svn:eol-style
+## -0,0 +1 ##
++native
+\ No newline at end of property
+Added: svn:mime-type
+## -0,0 +1 ##
++text/plain
+\ No newline at end of property
 Index: devel/llvm39/Makefile
 ===================================================================
 --- devel/llvm39/Makefile	(revision 437869)
@@ -690,6 +751,86 @@ Index: lang/rust/files/patch-ino64
 + 
 
 Property changes on: lang/rust/files/patch-ino64
+___________________________________________________________________
+Added: fbsd:nokeywords
+## -0,0 +1 ##
++yes
+\ No newline at end of property
+Added: svn:eol-style
+## -0,0 +1 ##
++native
+\ No newline at end of property
+Added: svn:mime-type
+## -0,0 +1 ##
++text/plain
+\ No newline at end of property
+Index: sysutils/py-psutil/files/patch-ino64
+===================================================================
+--- sysutils/py-psutil/files/patch-ino64	(nonexistent)
++++ sysutils/py-psutil/files/patch-ino64	(working copy)
+@@ -0,0 +1,60 @@
++--- psutil/arch/bsd/freebsd_socks.c.orig	2017-04-22 17:20:07.041427000 +0000
+++++ psutil/arch/bsd/freebsd_socks.c	2017-04-22 17:22:50.547756000 +0000
++@@ -148,20 +148,20 @@
++         if (kif->kf_sock_domain == AF_INET) {
++             if (!psutil_sockaddr_matches(
++                     AF_INET, inp->inp_lport, &inp->inp_laddr,
++-                    &kif->kf_sa_local))
+++                    &kif->kf_un.kf_sock.kf_sa_local))
++                 continue;
++             if (!psutil_sockaddr_matches(
++                     AF_INET, inp->inp_fport, &inp->inp_faddr,
++-                    &kif->kf_sa_peer))
+++                    &kif->kf_un.kf_sock.kf_sa_peer))
++                 continue;
++         } else {
++             if (!psutil_sockaddr_matches(
++                     AF_INET6, inp->inp_lport, &inp->in6p_laddr,
++-                    &kif->kf_sa_local))
+++                    &kif->kf_un.kf_sock.kf_sa_local))
++                 continue;
++             if (!psutil_sockaddr_matches(
++                     AF_INET6, inp->inp_fport, &inp->in6p_faddr,
++-                    &kif->kf_sa_peer))
+++                    &kif->kf_un.kf_sock.kf_sa_peer))
++                 continue;
++         }
++ 
++@@ -577,19 +577,19 @@
++                 inet_ntop(
++                     kif->kf_sock_domain,
++                     psutil_sockaddr_addr(kif->kf_sock_domain,
++-                                         &kif->kf_sa_local),
+++                                         &kif->kf_un.kf_sock.kf_sa_local),
++                     lip,
++                     sizeof(lip));
++                 inet_ntop(
++                     kif->kf_sock_domain,
++                     psutil_sockaddr_addr(kif->kf_sock_domain,
++-                                         &kif->kf_sa_peer),
+++                                         &kif->kf_un.kf_sock.kf_sa_peer),
++                     rip,
++                     sizeof(rip));
++                 lport = htons(psutil_sockaddr_port(kif->kf_sock_domain,
++-                                                   &kif->kf_sa_local));
+++                                                   &kif->kf_un.kf_sock.kf_sa_local));
++                 rport = htons(psutil_sockaddr_port(kif->kf_sock_domain,
++-                                                   &kif->kf_sa_peer));
+++                                                   &kif->kf_un.kf_sock.kf_sa_peer));
++ 
++                 // construct python tuple/list
++                 py_laddr = Py_BuildValue("(si)", lip, lport);
++@@ -620,7 +620,7 @@
++             else if (kif->kf_sock_domain == AF_UNIX) {
++                 struct sockaddr_un *sun;
++ 
++-                sun = (struct sockaddr_un *)&kif->kf_sa_local;
+++                sun = (struct sockaddr_un *)&kif->kf_un.kf_sock.kf_sa_local;
++                 snprintf(
++                     path, sizeof(path), "%.*s",
++                     (int)(sun->sun_len - (sizeof(*sun) - sizeof(sun->sun_path))),
+
+Property changes on: sysutils/py-psutil/files/patch-ino64
 ___________________________________________________________________
 Added: fbsd:nokeywords
 ## -0,0 +1 ##
