@@ -80,8 +80,7 @@ freebsd11_scandir(const char *dirname, struct freebsd11_dirent ***namelist,
 #endif
 {
 	struct freebsd11_dirent *d, *p, **names = NULL;
-	size_t numitems;
-	long arraysz;
+	size_t arraysz, numitems;
 	DIR *dirp;
 
 	if ((dirp = opendir(dirname)) == NULL)
