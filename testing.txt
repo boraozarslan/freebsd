@@ -157,22 +157,40 @@ records.
 
 5. Ports Status with ino64
 
-A ports exp-run for ino64 is open in PR 218320. The failing ports each
-responsible for more than 1 skipped port are:
+A ports exp-run for ino64 is open in PR 218320. The failing ports and
+the number of ports skipped as a result are:
 
-lang/ghc			497
-multimedia/webcamd		62
-lang/gcc6-aux			54
-devel/libgtop			39
-sysutils/py-psutil		13
-devel/llvm38			6
-lang/rust			4
-sysutils/py-psutil121		3
+Port                  Skipped  Status		Maintainer
+----                  -------  ------		----------
+lang/llvm39                 -  ports.patch	brooks@FreeBSD.org
+lang/llvm40                 -  ports.patch	brooks@FreeBSD.org
+lang/ghc                  497  ports.patch	haskell@FreeBSD.org
+multimedia/webcamd         62			hselasky@FreeBSD.org
+lang/gcc6-aux              54			freebsd.contact@marino.st
+devel/libgtop              39			gnome@FreeBSD.org
+sysutils/py-psutil         13  ports.patch	sunpoet@FreeBSD.org
+devel/llvm38                6			brooks@FreeBSD.org
+lang/rust                   4  ports.patch	riggs@FreeBSD.org
+sysutils/py-psutil121       3			swills@FreeBSD.org
+devel/llvm-devel            1			brooks@FreeBSD.org
+devel/radare2               0			torres.73a@gmail.com
+emulators/qemu-user-static  0			sbruno@FreeBSD.org
+lang/ccl                    0			olgeni@FreeBSD.org
+lang/dmd2                   0			cy@FreeBSD.org
+lang/gcc5-aux               0			freebsd.contact@marino.st
+lang/modula3                0			ports@FreeBSD.org
+lang/rust-nightly           0			dumbbell@FreeBSD.org
+lang/twelf                  0			beyert@cs.ucr.edu
+lang/urweb                  0			beyert@cs.ucr.edu
+net-mgmt/netdata            0			mmokhi@FreeBSD.org
 
-Patches are available for lang/llvm39, lang/llvm40, lang/ghc, and
-lang/rust in the topic branch as ports.patch, and llvm38 can be fixed
-in the same way as llvm39 and llvm40. Assistance with investigating
-and fixing the port failures will be greatly appreciated.
+Patches are available for a number of ports in the ports.patch file
+at the top level directory of the topic branch, and are indicated by
+"ports.patch" in Status above.  There are cases where one of a group
+of ports is patched, and the same approach can likely be applied to
+other ports in the same group (e.g., the approach in the lang/llvm39
+and lang/llvm40 patches can probably be applied to lang/llvm38 and
+lang/llvm-devel).
 
 Below is an overview of the problems and proposed solutions, probably
 mostly relevant to the ports maintainers.
