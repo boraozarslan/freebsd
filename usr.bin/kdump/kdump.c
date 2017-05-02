@@ -1735,8 +1735,6 @@ ktrsockaddr(struct sockaddr *sa)
 {
 /*
  TODO: Support additional address families
-	#include <netnatm/natm.h>
-	struct sockaddr_natm	*natm;
 	#include <netsmb/netbios.h>
 	struct sockaddr_nb	*nb;
 */
