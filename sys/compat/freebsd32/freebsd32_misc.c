@@ -123,7 +123,7 @@ CTASSERT(sizeof(struct kevent32) == 20);
 CTASSERT(sizeof(struct iovec32) == 8);
 CTASSERT(sizeof(struct msghdr32) == 28);
 #ifndef __mips__
-CTASSERT(sizeof(struct stat32) == 192);
+CTASSERT(sizeof(struct stat32) == 208);
 CTASSERT(sizeof(struct freebsd11_stat32) == 96);
 #endif
 CTASSERT(sizeof(struct sigaction32) == 24);
