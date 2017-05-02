@@ -151,7 +151,7 @@ struct freebsd11_stat {
 };
 #endif /* _WANT_FREEBSD11_STAT || _KERNEL */
 
-#if defined(__i386__) || defined(__powerpc__)
+#if defined(__i386__)
 #define	__STAT_TIME_T_EXT	1
 #endif
 

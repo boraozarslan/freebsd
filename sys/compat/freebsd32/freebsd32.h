@@ -160,7 +160,7 @@ struct msghdr32 {
 	int		 msg_flags;
 };
 
-#if defined(__amd64__) || defined(__powerpc64__)
+#if defined(__amd64__)
 #define	__STAT32_TIME_T_EXT	1
 #endif
 
