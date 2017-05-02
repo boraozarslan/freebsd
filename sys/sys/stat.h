@@ -151,6 +151,10 @@ struct freebsd11_stat {
 };
 #endif /* _WANT_FREEBSD11_STAT || _KERNEL */
 
+#if defined(__i386__) || defined(__powerpc__)
+#define	__STAT_TIME_T_EXT	1
+#endif
+
 struct stat {
 	dev_t     st_dev;		/* inode's device */
 	ino_t	  st_ino;		/* inode's number */
@@ -161,9 +165,21 @@ struct stat {
 	gid_t	  st_gid;		/* group ID of the file's group */
 	__int32_t st_padding1;
 	dev_t     st_rdev;		/* device type */
+#ifdef	__STAT_TIME_T_EXT
+	__int32_t st_atim_ext;
+#endif
 	struct	timespec st_atim;	/* time of last access */
+#ifdef	__STAT_TIME_T_EXT
+	__int32_t st_mtim_ext;
+#endif
 	struct	timespec st_mtim;	/* time of last data modification */
+#ifdef	__STAT_TIME_T_EXT
+	__int32_t st_ctim_ext;
+#endif
 	struct	timespec st_ctim;	/* time of last file status change */
+#ifdef	__STAT_TIME_T_EXT
+	__int32_t st_btim_ext;
+#endif
 	struct	timespec st_birthtim;	/* time of file creation */
 	off_t	  st_size;		/* file size, in bytes */
 	blkcnt_t st_blocks;		/* blocks allocated for file */

@@ -160,6 +160,10 @@ struct msghdr32 {
 	int		 msg_flags;
 };
 
+#if defined(__amd64__) || defined(__powerpc64__)
+#define	__STAT32_TIME_T_EXT	1
+#endif
+
 struct stat32 {
 	dev_t st_dev;
 	ino_t st_ino;
@@ -170,9 +174,21 @@ struct stat32 {
 	gid_t	st_gid;
 	u_int32_t st_padding1;
 	dev_t st_rdev;
+#ifdef	__STAT32_TIME_T_EXT
+	__int32_t st_atim_ext;
+#endif
 	struct timespec32 st_atim;
+#ifdef	__STAT32_TIME_T_EXT
+	__int32_t st_mtim_ext;
+#endif
 	struct timespec32 st_mtim;
+#ifdef	__STAT32_TIME_T_EXT
+	__int32_t st_ctim_ext;
+#endif
 	struct timespec32 st_ctim;
+#ifdef	__STAT32_TIME_T_EXT
+	__int32_t st_btim_ext;
+#endif
 	struct timespec32 st_birthtim;
 	off_t	st_size;
 	int64_t	st_blocks;
