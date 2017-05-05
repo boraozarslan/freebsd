@@ -59,7 +59,7 @@ the impact is not limited to one part of the system, but affects:
 3. Quirks.
 
 We handled kinfo sysctl MIBs, but other MIBs which report structures
-depended on the changed type, are not handled in general.  It was
+dependant on the changed type, are not handled in general.  It was
 considered that the breakage is either in the management interfaces,
 where we usually allow ABI slip, or is not important.
 
