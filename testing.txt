@@ -58,10 +58,10 @@ the impact is not limited to one part of the system, but affects:
 
 3. Quirks.
 
-We handled kinfo sysctl MIBs, but other MIBs which report structures
-dependant on the changed type, are not handled in general.  It was
-considered that the breakage is either in the management interfaces,
-where we usually allow ABI slip, or is not important.
+We handled kinfo sysctl MIBs, but there is no general mechanism to
+handle other sysctl MIBS which return structures where the layout has
+changed. It was considered that the breakage is either in the management
+interfaces, where we usually allow ABI slip, or is not important.
 
 Struct xvnode changed layout, no compat shims are provided.
 
