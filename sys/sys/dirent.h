@@ -52,7 +52,7 @@ typedef	__off_t		off_t;
  *
  * A directory entry has a struct dirent at the front of it, containing its
  * inode number, the length of the entry, and the length of the name
- * contained in the entry.  These are followed by the name padded to a 8
+ * contained in the entry.  These are followed by the name padded to an 8
  * byte boundary with null bytes.  All names are guaranteed null terminated.
  * The maximum length of a name in a directory is MAXNAMLEN.
  *
