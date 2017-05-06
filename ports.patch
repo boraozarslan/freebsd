@@ -350,7 +350,7 @@ Index: lang/rust/files/old_fstat.c
 ===================================================================
 --- lang/rust/files/old_fstat.c	(nonexistent)
 +++ lang/rust/files/old_fstat.c	(working copy)
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,101 @@
 +#include <sys/syscall.h>
 +#include <dlfcn.h>
 +#include <stdio.h>
@@ -390,6 +390,7 @@ Index: lang/rust/files/old_fstat.c
 +struct ODIR;
 +struct freebsd11_dirent;
 +
++/*
 +__asm(".symver  old_readdir, readdir@FBSD_1.0");
 +int old_readdir(struct ODIR *);
 +int
@@ -398,6 +399,7 @@ Index: lang/rust/files/old_fstat.c
 +
 +	return (old_readdir(dirp));
 +}
++*/
 +
 +__asm(".symver  old_readdir_r, readdir_r@FBSD_1.0");
 +int old_readdir_r(struct ODIR *, struct freebsd11_dirent *,
@@ -426,6 +428,7 @@ Index: lang/rust/files/old_fstat.c
 +	return (error);
 +}
 +
++/*
 +__asm(".symver	old_scandir, scandir@FBSD_1.0");
 +int old_scandir(const char *, struct freebsd11_dirent ***,
 +    int (*)(const struct freebsd11_dirent *),
@@ -440,6 +443,7 @@ Index: lang/rust/files/old_fstat.c
 +
 +	return (old_scandir(dirname, namelist, select, dcomp));
 +}
++*/
 +
 +struct old_statfs;
 +int
