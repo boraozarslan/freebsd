@@ -791,6 +791,69 @@ Added: svn:mime-type
 ## -0,0 +1 ##
 +text/plain
 \ No newline at end of property
+Index: multimedia/webcamd/files/patch-ino64
+===================================================================
+--- multimedia/webcamd/files/patch-ino64	(nonexistent)
++++ multimedia/webcamd/files/patch-ino64	(working copy)
+@@ -0,0 +1,43 @@
++--- kernel/linux_func.c.orig	2017-05-07 09:15:00.252932000 +0000
+++++ kernel/linux_func.c	2017-05-07 09:16:38.466562000 +0000
++@@ -813,9 +813,9 @@
++ 
++ error:
++ 	printf("Trying to register "
++-	    "unknown device(0x%08x) "
+++	    "unknown device(0x%08jx) "
++ 	    "or subdevice(%d) too big.\n",
++-	    mm, (int)subdev);
+++	    (uintmax_t)mm, (int)subdev);
++ 	return;
++ }
++ 
++@@ -891,7 +891,7 @@
++ 
++ error:
++ 	printf("Cannot register character "
++-	    "device mm=0x%08x and desc='%s'.\n", mm, desc);
+++	    "device mm=0x%08jx and desc='%s'.\n", (uintmax_t)mm, desc);
++ 	return (-1);
++ }
++ 
++@@ -899,7 +899,7 @@
++ unregister_chrdev(dev_t mm, const char *desc)
++ {
++ 	printf("Cannot unregister character "
++-	    "device mm=0x%08x and desc='%s'.\n", mm, desc);
+++	    "device mm=0x%08jx and desc='%s'.\n", (uintmax_t)mm, desc);
++ 	return (-1);
++ }
++ 
++--- kernel/linux_defs.h.orig	2017-05-07 09:17:46.386422000 +0000
+++++ kernel/linux_defs.h	2017-05-07 09:18:05.156924000 +0000
++@@ -703,7 +703,7 @@
++ 
++ #endif
++ typedef uint32_t gfp_t;
++-typedef uint32_t dev_t;
+++typedef uint64_t dev_t;
++ typedef struct timespec ktime_t;
++ 
++ #endif					/* _LINUX_DEFS_H_ */
+
+Property changes on: multimedia/webcamd/files/patch-ino64
+___________________________________________________________________
+Added: fbsd:nokeywords
+## -0,0 +1 ##
++yes
+\ No newline at end of property
+Added: svn:eol-style
+## -0,0 +1 ##
++native
+\ No newline at end of property
+Added: svn:mime-type
+## -0,0 +1 ##
++text/plain
+\ No newline at end of property
 Index: sysutils/py-psutil/files/patch-ino64
 ===================================================================
 --- sysutils/py-psutil/files/patch-ino64	(nonexistent)
