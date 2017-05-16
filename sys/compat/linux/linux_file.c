@@ -328,7 +328,7 @@ linux_getdents(struct thread *td, struct linux_getdents_args *args)
 	caddr_t outp;			/* Linux-format */
 	int resid, linuxreclen;		/* Linux-format */
 	caddr_t lbuf;			/* Linux-format */
-	long base;
+	off_t base;
 	struct l_dirent *linux_dirent;
 	int buflen, error;
 	size_t retval;
@@ -409,7 +409,7 @@ linux_getdents64(struct thread *td, struct linux_getdents64_args *args)
 	caddr_t outp;			/* Linux-format */
 	int resid, linuxreclen;		/* Linux-format */
 	caddr_t lbuf;			/* Linux-format */
-	long base;
+	off_t base;
 	struct l_dirent64 *linux_dirent64;
 	int buflen, error;
 	size_t retval;
@@ -486,7 +486,7 @@ linux_readdir(struct thread *td, struct linux_readdir_args *args)
 	caddr_t buf;			/* BSD-format */
 	int linuxreclen;		/* Linux-format */
 	caddr_t lbuf;			/* Linux-format */
-	long base;
+	off_t base;
 	struct l_dirent *linux_dirent;
 	int buflen, error;
 
