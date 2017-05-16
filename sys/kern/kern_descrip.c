@@ -1366,10 +1366,10 @@ kern_fstat(struct thread *td, int fd, struct stat *sbp)
 #endif
 #ifdef __STAT_TIME_T_EXT
 	if (error == 0) {
-		sb.st_atim_ext = 0;
-		sb.st_mtim_ext = 0;
-		sb.st_ctim_ext = 0;
-		sb.st_btim_ext = 0;
+		sbp->st_atim_ext = 0;
+		sbp->st_mtim_ext = 0;
+		sbp->st_ctim_ext = 0;
+		sbp->st_btim_ext = 0;
 	}
 #endif
 	return (error);
