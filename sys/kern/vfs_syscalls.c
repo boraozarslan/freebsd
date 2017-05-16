@@ -3965,8 +3965,7 @@ freebsd11_kern_getdirentries(struct thread *td, int fd, char *ubuf, u_int count,
 		if (dp->d_reclen == 0)
 			break;
 		MPASS(dp->d_reclen >= _GENERIC_DIRLEN(0));
-		if (dp->d_namlen > sizeof(dstdp.d_name) - 1)
-			continue;
+		/* dp->d_namlen <= sizeof(dstdp.d_name) - 1 always */
 		dstdp.d_type = dp->d_type;
 		dstdp.d_namlen = dp->d_namlen;
 		dstdp.d_fileno = dp->d_fileno;		/* truncate */
