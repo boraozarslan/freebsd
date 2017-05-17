@@ -2271,8 +2271,6 @@ kern_statat(struct thread *td, int flag, int fd, char *path,
 	return (0);
 }
 
-#if defined(COMPAT_FREEBSD11)
-=======
 /*
  * Get file status; this version does not follow links.
  */
@@ -2295,6 +2293,7 @@ sys_lstat(struct thread *td, struct lstat_args *uap)
 	return (error);
 }
 
+#if defined(COMPAT_FREEBSD11)
 /*
  * Implementation of the NetBSD [l]stat() functions.
  */
