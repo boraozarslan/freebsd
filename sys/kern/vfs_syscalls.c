@@ -2271,28 +2271,6 @@ kern_statat(struct thread *td, int flag, int fd, char *path,
 	return (0);
 }
 
-/*
- * Get file status; this version does not follow links.
- */
-#ifndef _SYS_SYSPROTO_H_
-struct lstat_args {
-	char	*path;
-	struct stat *ub;
-};
-#endif
-int
-sys_lstat(struct thread *td, struct lstat_args *uap)
-{
-	struct stat sb;
-	int error;
-
-	error = kern_statat(td, AT_SYMLINK_NOFOLLOW, AT_FDCWD, uap->path,
-	    UIO_USERSPACE, &sb, NULL);
-	if (error == 0)
-		error = copyout(&sb, uap->ub, sizeof (sb));
-	return (error);
-}
-
 #if defined(COMPAT_FREEBSD11)
 /*
  * Implementation of the NetBSD [l]stat() functions.
@@ -2327,7 +2305,7 @@ struct freebsd11_nstat_args {
 };
 #endif
 int
-freebsd11_nstat(struct thread *td, struct freebsd11_nstat *uap)
+freebsd11_nstat(struct thread *td, struct freebsd11_nstat_args *uap)
 {
 	struct stat sb;
 	struct nstat nsb;
@@ -2347,7 +2325,7 @@ freebsd11_nstat(struct thread *td, struct freebsd11_nstat *uap)
 #ifndef _SYS_SYSPROTO_H_
 struct freebsd11_nlstat_args {
 	char	*path;
-	struct stat *ub;
+	struct nstat *ub;
 };
 #endif
 int
