@@ -8,5 +8,5 @@ Final items:
 2. Put ports patch on phab, ask portmgr for approval.
 Regardless of item 2:
 3. Ask pho for retest.
-4. make tinderbox
+d 4. make tinderbox
 5. commit
