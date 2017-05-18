@@ -1,7 +1,26 @@
-Index: devel/libgtop/files/patch-ino64
+Index: devel/libgtop/Makefile
 ===================================================================
---- devel/libgtop/files/patch-ino64	(nonexistent)
-+++ devel/libgtop/files/patch-ino64	(working copy)
+--- devel/libgtop/Makefile	(revision 440917)
++++ devel/libgtop/Makefile	(working copy)
+@@ -22,8 +22,13 @@
+ INSTALL_TARGET=	install-strip
+ CONFIGURE_ARGS=	--enable-introspection
+ 
++.include <bsd.port.pre.mk>
++.if ${OPSYS} == FreeBSD && ${OSVERSION} >= 1200031
++EXTRA_PATCHES+=	${PATCHDIR}/extra-patch-ino64
++.endif
++
+ INFO=		libgtop2
+ 
+ PKGMESSAGE=	${FILESDIR}/pkg-message
+ 
+-.include <bsd.port.mk>
++.include <bsd.port.post.mk>
+Index: devel/libgtop/files/extra-patch-ino64
+===================================================================
+--- devel/libgtop/files/extra-patch-ino64	(nonexistent)
++++ devel/libgtop/files/extra-patch-ino64	(working copy)
 @@ -0,0 +1,41 @@
 +--- sysdeps/freebsd/procopenfiles.c.orig	2014-10-12 07:17:26.000000000 +0000
 ++++ sysdeps/freebsd/procopenfiles.c	2017-04-22 17:17:54.862169000 +0000
@@ -45,7 +64,7 @@ Index: devel/libgtop/files/patch-ino64
 + 		} else if (kif->kf_type == KF_TYPE_PIPE) {
 + 			entry.type = GLIBTOP_FILE_TYPE_PIPE;
 
-Property changes on: devel/libgtop/files/patch-ino64
+Property changes on: devel/libgtop/files/extra-patch-ino64
 ___________________________________________________________________
 Added: fbsd:nokeywords
 ## -0,0 +1 ##
@@ -63,11 +82,13 @@ Index: devel/llvm39/Makefile
 ===================================================================
 --- devel/llvm39/Makefile	(revision 440917)
 +++ devel/llvm39/Makefile	(working copy)
-@@ -339,6 +339,7 @@
+@@ -339,6 +339,9 @@
  
  post-patch-COMPILER_RT-on:
  	cd ${WRKSRC_compiler_rt} && patch < ${PATCHDIR}/compiler-rt-patch-svn-294806
++.if ${OPSYS} == FreeBSD && ${OSVERSION} >= 1200031
 +	cd ${WRKSRC_compiler_rt} && patch < ${PATCHDIR}/compiler-rt-patch-ino64
++.endif
  
  post-build-COMPILER_RT-on:
  	${MKDIR} ${WRKDIR}/compiler-rt-build
@@ -140,12 +161,14 @@ Index: devel/llvm40/Makefile
 ===================================================================
 --- devel/llvm40/Makefile	(revision 440917)
 +++ devel/llvm40/Makefile	(working copy)
-@@ -339,6 +339,9 @@
+@@ -339,6 +339,11 @@
  post-extract-OPENMP-on:
  	${MV} ${WRKSRC_openmp} ${PATCH_WRKSRC}/tools/openmp
  
 +post-patch-COMPILER_RT-on:
++.if ${OPSYS} == FreeBSD && ${OSVERSION} >= 1200031
 +	cd ${WRKSRC_compiler_rt} && patch < ${PATCHDIR}/compiler-rt-patch-ino64
++.endif
 +
  post-patch:
  	${REINPLACE_CMD} -e 's|import lit|import lit${LLVM_SUFFIX}|' \
@@ -223,17 +246,18 @@ Index: lang/ghc/Makefile
  	@${REINPLACE_CMD} -e 's|@SettingsCCompilerFlags@|& -Qunused-arguments|' ${BOOT_DIR}/settings.in
  .endif
  .endif
-+.if empty(PORT_OPTIONS:MBOOT)
++.if empty(PORT_OPTIONS:MBOOT) && ${OPSYS} == FreeBSD && ${OSVERSION} >= 1200031
 +	@${REINPLACE_CMD} -e 's|@SettingsCCompilerLinkFlags@|& -Wl,--wrap=readdir_r,--wrap=stat,--wrap=lstat,--wrap=fstat,--wrap=mknod|' ${BOOT_DIR}/settings.in
 +.endif
  
  post-install-script:
  	@${FIND} -ds ${GHC_LIBDIR} -type f -print | ${SED} -E -e \
-@@ -269,6 +272,13 @@
+@@ -269,6 +272,14 @@
  
  pre-configure:
  	@${MKDIR} ${TMPDIR}
-+.if empty(PORT_OPTIONS:MBOOTH)
++.if empty(PORT_OPTIONS:MBOOTH) && ${OPSYS} == FreeBSD && \
++    ${OSVERSION} >= 1200031
 +	${CC} ${CFLAGS} -c -o ${BOOT_DIR}/wrap.o ${PATCHDIR}/wrap.c
 +	for x in ${BOOT_DIR}/rts/dist/build/libCffi*.a; do \
 +	    ${AR} q $$x ${BOOT_DIR}/wrap.o; ${RANLIB} $$x; \
@@ -317,7 +341,19 @@ Index: lang/rust/Makefile
 ===================================================================
 --- lang/rust/Makefile	(revision 440917)
 +++ lang/rust/Makefile	(working copy)
-@@ -129,6 +129,9 @@
+@@ -105,6 +105,11 @@
+ PLIST_FILES=		lib/rustlib/components \
+ 			lib/rustlib/rust-installer-version
+ 
++.include <bsd.port.pre.mk>
++.if ${OPSYS} == FreeBSD && ${OSVERSION} >= 1200031
++EXTRA_PATCHES+=        ${PATCHDIR}/extra-patch-ino64
++.endif
++
+ pre-fetch:
+ 	# FIXME: This is the same check for CONFLICTS as the standard
+ 	# one, except port origins are not compared. This allows
+@@ -129,6 +134,9 @@
  		exit 1;\
  	fi
  
@@ -327,7 +363,7 @@ Index: lang/rust/Makefile
  post-extract:
  	@${MKDIR} \
  		${WRKSRC}/build/cache/${RUST_BOOTSTRAP_DIR} \
-@@ -135,10 +138,16 @@
+@@ -135,10 +143,18 @@
  		${WRKSRC}/build/cache/${CARGO_BOOTSTRAP_DIR}
  	${LN} -sf ${DISTDIR}/${DIST_SUBDIR}/${RUSTC_BOOTSTRAP} \
  		${WRKSRC}/build/cache/${RUST_BOOTSTRAP_DIR}
@@ -336,6 +372,7 @@ Index: lang/rust/Makefile
  	${LN} -sf ${DISTDIR}/${DIST_SUBDIR}/${CARGO_BOOTSTRAP} \
  		${WRKSRC}/build/cache/${CARGO_BOOTSTRAP_DIR}
 +	${TAR} -x -C ${WRKSRC} -f ${DISTDIR}/${DIST_SUBDIR}/${RUST_STD_BOOTSTRAP}
++.if ${OPSYS} == FreeBSD && ${OSVERSION} >= 1200031
 +	${CC} ${CFLAGS} -fPIC -c -o ${WRKSRC}/old_fstat.o ${FILESDIR}/old_fstat.c
 +	(cd ${WRKSRC} && ${AR} x ${WRKSRC}/${LIBSTD} ${STDF})
 +	${LD} -r -o ${WRKSRC}/std.xx.o ${WRKSRC}/${STDF} ${WRKSRC}/old_fstat.o
@@ -343,130 +380,23 @@ Index: lang/rust/Makefile
 +	(cd ${WRKSRC} && ${AR} r ${WRKSRC}/${LIBSTD} ${STDF})
 +	${TAR} -cy -C ${WRKSRC} -f ${WRKSRC}/rustc.tbz rust-std-1.16.0-x86_64-unknown-freebsd
 +	${MV} ${WRKSRC}/rustc.tbz ${WRKSRC}/build/cache/${RUST_STD_BOOTSTRAP}
++.endif
  
  post-patch:
  	@test ! -f ${WRKSRC}/mk/main.mk || \
-Index: lang/rust/files/old_fstat.c
+@@ -204,7 +220,7 @@
+ 		${STAGEDIR}${PREFIX}/lib/*.so \
+ 		${STAGEDIR}${PREFIX}/lib/rustlib/*/lib/*.so
+ 
+-.include <bsd.port.mk>
++.include <bsd.port.post.mk>
+ 
+ # "make gen-registry" is a special target to ease this port update.
+ #
+Index: lang/rust/files/extra-patch-ino64
 ===================================================================
---- lang/rust/files/old_fstat.c	(nonexistent)
-+++ lang/rust/files/old_fstat.c	(working copy)
-@@ -0,0 +1,101 @@
-+#include <sys/syscall.h>
-+#include <dlfcn.h>
-+#include <stdio.h>
-+#include <stdlib.h>
-+#include <unistd.h>
-+
-+struct stat;
-+
-+int
-+fstat(int fd, struct stat *sb)
-+{
-+
-+	return (syscall(SYS_freebsd11_fstat, fd, sb));
-+}
-+
-+int
-+stat(const char *path, struct stat *sb)
-+{
-+
-+	return (syscall(SYS_freebsd11_stat, path, sb));
-+}
-+
-+int
-+lstat(const char *path, struct stat *sb)
-+{
-+
-+	return (syscall(SYS_freebsd11_lstat, path, sb));
-+}
-+
-+int
-+fstatat(int fd, const char *path, struct stat *sb, int flag)
-+{
-+
-+	return (syscall(SYS_freebsd11_fstatat, fd, path, sb, flag));
-+}
-+
-+struct ODIR;
-+struct freebsd11_dirent;
-+
-+/*
-+__asm(".symver  old_readdir, readdir@FBSD_1.0");
-+int old_readdir(struct ODIR *);
-+int
-+readdir(struct ODIR *dirp)
-+{
-+
-+	return (old_readdir(dirp));
-+}
-+*/
-+
-+__asm(".symver  old_readdir_r, readdir_r@FBSD_1.0");
-+int old_readdir_r(struct ODIR *, struct freebsd11_dirent *,
-+    struct freebsd11_dirent **);
-+int
-+readdir_r(struct ODIR *dirp, struct freebsd11_dirent *entry,
-+    struct freebsd11_dirent **result)
-+{
-+	void *libc;
-+	void *fptr;
-+	int error;
-+
-+	libc = dlopen("libc.so.7", RTLD_LAZY | RTLD_GLOBAL);
-+	if (libc == NULL) {
-+		fprintf(stderr, "libc open: %s\n", dlerror());
-+		abort();
-+	}
-+	fptr = dlvsym(libc, "readdir_r", "FBSD_1.0");
-+	if (fptr == NULL) {
-+		fprintf(stderr, "readdir_r: %s\n", dlerror());
-+		abort();
-+	}
-+	error = ((int (*)(struct ODIR *, struct freebsd11_dirent *,
-+	    struct freebsd11_dirent **))fptr)(dirp, entry, result);
-+	dlclose(libc);
-+	return (error);
-+}
-+
-+/*
-+__asm(".symver	old_scandir, scandir@FBSD_1.0");
-+int old_scandir(const char *, struct freebsd11_dirent ***,
-+    int (*)(const struct freebsd11_dirent *),
-+    int (*)(const struct freebsd11_dirent **,
-+	const struct freebsd11_dirent **));
-+int
-+scandir(const char *dirname, struct freebsd11_dirent ***namelist,
-+    int (*select)(const struct freebsd11_dirent *),
-+    int (*dcomp)(const struct freebsd11_dirent **,
-+	const struct freebsd11_dirent **))
-+{
-+
-+	return (old_scandir(dirname, namelist, select, dcomp));
-+}
-+*/
-+
-+struct old_statfs;
-+int
-+fstatfs(int fd, struct old_statfs *buf)
-+{
-+
-+	return (syscall(SYS_freebsd11_fstatfs, fd, buf));
-+}
-
-Property changes on: lang/rust/files/old_fstat.c
-___________________________________________________________________
-Added: svn:eol-style
-## -0,0 +1 ##
-+native
-\ No newline at end of property
-Added: svn:mime-type
-## -0,0 +1 ##
-+text/plain
-\ No newline at end of property
-Index: lang/rust/files/patch-ino64
-===================================================================
---- lang/rust/files/patch-ino64	(nonexistent)
-+++ lang/rust/files/patch-ino64	(working copy)
+--- lang/rust/files/extra-patch-ino64	(nonexistent)
++++ lang/rust/files/extra-patch-ino64	(working copy)
 @@ -0,0 +1,309 @@
 +--- ./src/liblibc/src/unix/bsd/freebsdlike/freebsd/mod.rs.orig	2017-04-24 18:56:45.000000000 +0000
 ++++ ./src/liblibc/src/unix/bsd/freebsdlike/freebsd/mod.rs	2017-05-15 12:17:51.828121000 +0000
@@ -778,7 +708,7 @@ Index: lang/rust/files/patch-ino64
 + pub type pthread_attr_t = *mut ::c_void;
 + pub type rlim_t = i64;
 
-Property changes on: lang/rust/files/patch-ino64
+Property changes on: lang/rust/files/extra-patch-ino64
 ___________________________________________________________________
 Added: fbsd:nokeywords
 ## -0,0 +1 ##
@@ -792,10 +722,149 @@ Added: svn:mime-type
 ## -0,0 +1 ##
 +text/plain
 \ No newline at end of property
-Index: multimedia/webcamd/files/patch-ino64
+Index: lang/rust/files/old_fstat.c
 ===================================================================
---- multimedia/webcamd/files/patch-ino64	(nonexistent)
-+++ multimedia/webcamd/files/patch-ino64	(working copy)
+--- lang/rust/files/old_fstat.c	(nonexistent)
++++ lang/rust/files/old_fstat.c	(working copy)
+@@ -0,0 +1,101 @@
++#include <sys/syscall.h>
++#include <dlfcn.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++
++struct stat;
++
++int
++fstat(int fd, struct stat *sb)
++{
++
++	return (syscall(SYS_freebsd11_fstat, fd, sb));
++}
++
++int
++stat(const char *path, struct stat *sb)
++{
++
++	return (syscall(SYS_freebsd11_stat, path, sb));
++}
++
++int
++lstat(const char *path, struct stat *sb)
++{
++
++	return (syscall(SYS_freebsd11_lstat, path, sb));
++}
++
++int
++fstatat(int fd, const char *path, struct stat *sb, int flag)
++{
++
++	return (syscall(SYS_freebsd11_fstatat, fd, path, sb, flag));
++}
++
++struct ODIR;
++struct freebsd11_dirent;
++
++/*
++__asm(".symver  old_readdir, readdir@FBSD_1.0");
++int old_readdir(struct ODIR *);
++int
++readdir(struct ODIR *dirp)
++{
++
++	return (old_readdir(dirp));
++}
++*/
++
++__asm(".symver  old_readdir_r, readdir_r@FBSD_1.0");
++int old_readdir_r(struct ODIR *, struct freebsd11_dirent *,
++    struct freebsd11_dirent **);
++int
++readdir_r(struct ODIR *dirp, struct freebsd11_dirent *entry,
++    struct freebsd11_dirent **result)
++{
++	void *libc;
++	void *fptr;
++	int error;
++
++	libc = dlopen("libc.so.7", RTLD_LAZY | RTLD_GLOBAL);
++	if (libc == NULL) {
++		fprintf(stderr, "libc open: %s\n", dlerror());
++		abort();
++	}
++	fptr = dlvsym(libc, "readdir_r", "FBSD_1.0");
++	if (fptr == NULL) {
++		fprintf(stderr, "readdir_r: %s\n", dlerror());
++		abort();
++	}
++	error = ((int (*)(struct ODIR *, struct freebsd11_dirent *,
++	    struct freebsd11_dirent **))fptr)(dirp, entry, result);
++	dlclose(libc);
++	return (error);
++}
++
++/*
++__asm(".symver	old_scandir, scandir@FBSD_1.0");
++int old_scandir(const char *, struct freebsd11_dirent ***,
++    int (*)(const struct freebsd11_dirent *),
++    int (*)(const struct freebsd11_dirent **,
++	const struct freebsd11_dirent **));
++int
++scandir(const char *dirname, struct freebsd11_dirent ***namelist,
++    int (*select)(const struct freebsd11_dirent *),
++    int (*dcomp)(const struct freebsd11_dirent **,
++	const struct freebsd11_dirent **))
++{
++
++	return (old_scandir(dirname, namelist, select, dcomp));
++}
++*/
++
++struct old_statfs;
++int
++fstatfs(int fd, struct old_statfs *buf)
++{
++
++	return (syscall(SYS_freebsd11_fstatfs, fd, buf));
++}
+
+Property changes on: lang/rust/files/old_fstat.c
+___________________________________________________________________
+Added: svn:eol-style
+## -0,0 +1 ##
++native
+\ No newline at end of property
+Added: svn:mime-type
+## -0,0 +1 ##
++text/plain
+\ No newline at end of property
+Index: multimedia/webcamd/Makefile
+===================================================================
+--- multimedia/webcamd/Makefile	(revision 440917)
++++ multimedia/webcamd/Makefile	(working copy)
+@@ -76,6 +76,11 @@
+ MAKE_ARGS+=	HAVE_MAN="YES"
+ MAKE_ARGS+=	PTHREAD_LIBS="-lpthread"
+ 
++.include <bsd.port.pre.mk>
++.if ${OPSYS} == FreeBSD && ${OSVERSION} >= 1200031
++EXTRA_PATCHES+=        ${PATCHDIR}/extra-patch-ino64
++.endif
++
+ do-configure:
+ 	${MAKE} -C${WRKSRC}/tools/linux_make
+ 	${MAKE} ${MAKE_ARGS} configure -C${WRKSRC}
+@@ -87,4 +92,4 @@
+ 	@${MKDIR} ${STAGEDIR}${PREFIX}/etc/devd
+ 	${INSTALL_DATA} "${WRKDIR}/webcamd.conf" ${STAGEDIR}${PREFIX}/etc/devd
+ 
+-.include <bsd.port.mk>
++.include <bsd.port.post.mk>
+Index: multimedia/webcamd/files/extra-patch-ino64
+===================================================================
+--- multimedia/webcamd/files/extra-patch-ino64	(nonexistent)
++++ multimedia/webcamd/files/extra-patch-ino64	(working copy)
 @@ -0,0 +1,43 @@
 +--- kernel/linux_func.c.orig	2017-05-07 09:15:00.252932000 +0000
 ++++ kernel/linux_func.c	2017-05-07 09:16:38.466562000 +0000
@@ -841,7 +910,7 @@ Index: multimedia/webcamd/files/patch-ino64
 + 
 + #endif					/* _LINUX_DEFS_H_ */
 
-Property changes on: multimedia/webcamd/files/patch-ino64
+Property changes on: multimedia/webcamd/files/extra-patch-ino64
 ___________________________________________________________________
 Added: fbsd:nokeywords
 ## -0,0 +1 ##
@@ -855,10 +924,28 @@ Added: svn:mime-type
 ## -0,0 +1 ##
 +text/plain
 \ No newline at end of property
-Index: sysutils/py-psutil/files/patch-ino64
+Index: sysutils/py-psutil/Makefile
 ===================================================================
---- sysutils/py-psutil/files/patch-ino64	(nonexistent)
-+++ sysutils/py-psutil/files/patch-ino64	(working copy)
+--- sysutils/py-psutil/Makefile	(revision 440917)
++++ sysutils/py-psutil/Makefile	(working copy)
+@@ -19,7 +19,12 @@
+ USE_PYTHON=	autoplist concurrent distutils
+ USES=		python
+ 
++.include <bsd.port.pre.mk>
++.if ${OPSYS} == FreeBSD && ${OSVERSION} >= 1200031
++EXTRA_PATCHES+=        ${PATCHDIR}/extra-patch-ino64
++.endif
++
+ post-install:
+ 	${STRIP_CMD} ${STAGEDIR}${PYTHON_SITELIBDIR}/psutil/_psutil_bsd.so ${STAGEDIR}${PYTHON_SITELIBDIR}/psutil/_psutil_posix.so
+ 
+-.include <bsd.port.mk>
++.include <bsd.port.post.mk>
+Index: sysutils/py-psutil/files/extra-patch-ino64
+===================================================================
+--- sysutils/py-psutil/files/extra-patch-ino64	(nonexistent)
++++ sysutils/py-psutil/files/extra-patch-ino64	(working copy)
 @@ -0,0 +1,60 @@
 +--- psutil/arch/bsd/freebsd_socks.c.orig	2017-04-22 17:20:07.041427000 +0000
 ++++ psutil/arch/bsd/freebsd_socks.c	2017-04-22 17:22:50.547756000 +0000
@@ -921,7 +1008,7 @@ Index: sysutils/py-psutil/files/patch-ino64
 +                     path, sizeof(path), "%.*s",
 +                     (int)(sun->sun_len - (sizeof(*sun) - sizeof(sun->sun_path))),
 
-Property changes on: sysutils/py-psutil/files/patch-ino64
+Property changes on: sysutils/py-psutil/files/extra-patch-ino64
 ___________________________________________________________________
 Added: fbsd:nokeywords
 ## -0,0 +1 ##
