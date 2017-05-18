@@ -165,9 +165,9 @@ Port                  Skipped  Status		Maintainer
 lang/llvm39                 -  ports.patch	brooks@FreeBSD.org
 lang/llvm40                 -  ports.patch	brooks@FreeBSD.org
 lang/ghc                  497  ports.patch	haskell@FreeBSD.org
-multimedia/webcamd         62			hselasky@FreeBSD.org
+multimedia/webcamd         62  ports.patch	hselasky@FreeBSD.org
 lang/gcc6-aux              54			freebsd.contact@marino.st
-devel/libgtop              39			gnome@FreeBSD.org
+devel/libgtop              39  ports.patch	gnome@FreeBSD.org
 sysutils/py-psutil         13  ports.patch	sunpoet@FreeBSD.org
 devel/llvm38                6			brooks@FreeBSD.org
 lang/rust                   4  ports.patch	riggs@FreeBSD.org
