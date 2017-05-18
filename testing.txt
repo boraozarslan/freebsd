@@ -240,8 +240,22 @@ cat/name: Update for ino64
 
 This change adopts the port to ino64 commit, which is explained in
 https://lists.freebsd.org/pipermail/freebsd-current/2017-April/065687.html
-I seek for your approval, or for the portmgr blanket.  I am also happy
-if you, as maintainer of the port, handle this yourself.
+The src change is nearly ready to commit, and is undergoing a final round
+of pre-commit testing.  This will likely happen in the next few days,
+unless some issue found.
 
-The commit will happen after the ino64 src commit, which currently is
-on the last moment (pre-commit) testing stage.
+In general, patches for ino64 support will be conditional on FreeBSD
+version.  It is likely that __FreeBSD_version / kern.osreldate 1200031
+will be the value used for the ino64 change, and the port patch may have
+a conditional test using that value.  Of course, if the final value in
+the src commit is different the ports patches will be updated before
+commit.
+
+A number of ports require updates after this change is committed to src.
+I seek approval of the change to the port in this review, either directly
+from the maintainer or portmgr blanket approval of the set of ino64 port
+updates.  In either case I will commit the ports change shortly after the
+src tree commit.
+
+I am also happy if you, as maintainer of the port, wish to handle this
+yourself.  Please add a comment here with your preference for this port.
