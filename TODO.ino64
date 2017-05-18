@@ -2,11 +2,3 @@ Commit checklist: see /preapply.sh
 
 After commit checklist:
 1. Regen and commit sys/kern and sys/compat/freebsd32 sysents.
-
-Final items:
-1. Make ports patch conditional on __FreeBSD_version
-2. Put ports patch on phab, ask portmgr for approval.
-Regardless of item 2:
-d 3. Ask pho for retest.
-d 4. make tinderbox
-5. commit
