@@ -234,3 +234,14 @@ The tentative schedule for the ino64 project:
 2017-05-19 Commit to HEAD
 
            Address post-commit failures where feasible
+
+=================================================
+cat/name: Update for ino64
+
+This change adopts the port to ino64 commit, which is explained in
+https://lists.freebsd.org/pipermail/freebsd-current/2017-April/065687.html
+I seek for your approval, or for the portmgr blanket.  I am also happy
+if you, as maintainer of the port, handle this yourself.
+
+The commit will happen after the ino64 src commit, which currently is
+on the last moment (pre-commit) testing stage.
