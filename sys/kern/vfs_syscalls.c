@@ -783,10 +783,9 @@ freebsd11_fhstatfs(struct thread *td, struct freebsd11_fhstatfs_args *uap)
  * Convert a new format statfs structure to an old format statfs structure.
  */
 static void
-freebsd11_cvtstatfs(nsp, osp)
-	struct statfs *nsp;
-	struct freebsd11_statfs *osp;
+freebsd11_cvtstatfs(struct statfs *nsp, struct freebsd11_statfs *osp)
 {
+
 	bzero(osp, sizeof(*osp));
 	osp->f_version = FREEBSD11_STATFS_VERSION;
 	osp->f_type = nsp->f_type;
