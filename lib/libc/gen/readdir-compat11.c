@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #define	_WANT_FREEBSD11_DIRENT
 #include <dirent.h>
 #include <errno.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,10 +54,12 @@ __FBSDID("$FreeBSD$");
 
 #include "gen-compat.h"
 
-static void
+static bool
 freebsd11_cvtdirent(struct freebsd11_dirent *dstdp, struct dirent *srcdp)
 {
 
+	if (srcdp->d_namlen >= sizeof(dstdp->d_name))
+		return (false);
 	dstdp->d_type = srcdp->d_type;
 	dstdp->d_namlen = srcdp->d_namlen;
 	dstdp->d_fileno = srcdp->d_fileno;		/* truncate */
@@ -65,6 +68,7 @@ freebsd11_cvtdirent(struct freebsd11_dirent *dstdp, struct dirent *srcdp)
 	bzero(dstdp->d_name + dstdp->d_namlen,
 	    dstdp->d_reclen - offsetof(struct freebsd11_dirent, d_name) -
 	    dstdp->d_namlen);
+	return (true);
 }
 
 struct freebsd11_dirent *
@@ -75,13 +79,15 @@ freebsd11_readdir(DIR *dirp)
 
 	if (__isthreaded)
 		_pthread_mutex_lock(&dirp->dd_lock);
-	dp = _readdir_unlocked(dirp, 1);
+	dp = _readdir_unlocked(dirp, RDU_SKIP);
 	if (dp != NULL) {
 		if (dirp->dd_compat_de == NULL)
 			dirp->dd_compat_de = malloc(sizeof(struct
 			    freebsd11_dirent));
-		freebsd11_cvtdirent(dirp->dd_compat_de, dp);
-		dstdp = dirp->dd_compat_de;
+		if (freebsd11_cvtdirent(dirp->dd_compat_de, dp))
+			dstdp = dirp->dd_compat_de;
+		else
+			dstdp = NULL;
 	} else
 		dstdp = NULL;
 	if (__isthreaded)
@@ -101,8 +107,10 @@ freebsd11_readdir_r(DIR *dirp, struct freebsd11_dirent *entry,
 	if (error != 0)
 		return (error);
 	if (xresult != NULL) {
-		freebsd11_cvtdirent(entry, &xentry);
-		*result = entry;
+		if (freebsd11_cvtdirent(entry, &xentry))
+			*result = entry;
+		else /* should not happen due to RDU_SHORT */
+			*result = NULL;
 	} else
 		*result = NULL;
 	return (0);

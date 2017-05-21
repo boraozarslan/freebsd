@@ -66,4 +66,7 @@ void 		_reclaim_telldir(DIR *);
 void 		_seekdir(DIR *, long);
 void		_fixtelldir(DIR *dirp, long oldseek, long oldloc);
 
+#define	RDU_SKIP	0x0001
+#define	RDU_SHORT	0x0002
+
 #endif

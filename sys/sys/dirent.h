@@ -58,8 +58,7 @@ typedef	__off_t		off_t;
  *
  * Explicit padding between the last member of the header (d_namelen) and
  * d_name avoids ABI padding at the end of dirent on LP64 architectures.
- * There is code depending on d_name being last.  Also, retaining this
- * padding on ILP32 architectures simplifies the compat32 layer.
+ * There is code depending on d_name being last.
  */
 
 struct dirent {
@@ -67,8 +66,9 @@ struct dirent {
 	off_t      d_off;		/* directory offset of entry */
 	__uint16_t d_reclen;		/* length of this record */
 	__uint8_t  d_type;		/* file type, see below */
-	__uint8_t  d_namlen;		/* length of string in d_name */
-	__uint32_t d_pad0;
+	__uint8_t  d_pad0;
+	__uint16_t d_namlen;		/* length of string in d_name */
+	__uint16_t d_pad1;
 #if __BSD_VISIBLE
 #define	MAXNAMLEN	255
 	char	d_name[MAXNAMLEN + 1];	/* name must be no longer than this */
