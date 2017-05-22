@@ -25,8 +25,8 @@ was decided that keeping ABI compat in this case is more useful than
 reporting 64bit dev_t, for the sake of pstat.
 
 Update note: strictly follow the instructions in UPDATING.  Build and
-install new kernel with COMPAT_FREEBSD11 option enabled, then reboot,
-and only then install new world.
+install the new kernel with COMPAT_FREEBSD11 option enabled, then
+reboot, and only then install new world.
 
 Credits:
 The 64-bit inode project, also known as ino64, started life many years
