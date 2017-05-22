@@ -1,40 +1,44 @@
 Commit the 64-bit inode project.
 
-Extend the ino_t, dev_t, nlink_t types to 64bit ints.  Modify struct
-dirent layout to include d_off, and change required alignment.
-Increase struct statfs f_mntfromname[] and f_mntonname[] array length
-MNAMELEN to 1024.
+Extend the ino_t, dev_t, nlink_t types to 64-bit ints.  Modify
+struct dirent layout to add d_off, increase the size of d_fileno
+to 64-bits, increase the size of d_namlen to 16-bits, and change
+the required alignment.  Increase struct statfs f_mntfromname[] and
+f_mntonname[] array length MNAMELEN to 1024.
 
 ABI breakage is mitigated by providing compatibility using versioned
-symbols, ingenious use of the existing padding in structures, and by
-employing other tricks.  Unfortunately, not everything can be fixed,
-especially outside the base system.  For instance, third-party APIs
-which pass struct stat around are broken in backward and forward-
-incompatible way.
+symbols, ingenious use of the existing padding in structures, and
+by employing other tricks.  Unfortunately, not everything can be
+fixed, especially outside the base system.  For instance, third-party
+APIs which pass struct stat around are broken in backward and
+forward incompatible ways.
 
-Kinfo sysctl MIBs ABI is changed in backward-compatible way, but there
-is no general mechanism to handle other sysctl MIBS which return
-structures where the layout has changed. It was considered that the
-breakage is either in the management interfaces, where we usually
-allow ABI slip, or is not important.
+Kinfo sysctl MIBs ABI is changed in backward-compatible way, but
+there is no general mechanism to handle other sysctl MIBS which
+return structures where the layout has changed. It was considered
+that the breakage is either in the management interfaces, where we
+usually allow ABI slip, or is not important.
 
 Struct xvnode changed layout, no compat shims are provided.
 
-For struct xtty, dev_t tty device member was reduced to uint32_t.  It
-was decided that keeping ABI compat in this case is more useful than
-reporting 64bit dev_t, for the sake of pstat.
+For struct xtty, dev_t tty device member was reduced to uint32_t.
+It was decided that keeping ABI compat in this case is more useful
+than reporting 64-bit dev_t, for the sake of pstat.
 
-Update note: strictly follow the instructions in UPDATING.  Build and
-install the new kernel with COMPAT_FREEBSD11 option enabled, then
-reboot, and only then install new world.
+Update note: strictly follow the instructions in UPDATING.  Build
+and install the new kernel with COMPAT_FREEBSD11 option enabled,
+then reboot, and only then install new world.
 
-Credits:
-The 64-bit inode project, also known as ino64, started life many years
-ago as a project by Gleb Kurtsou (gleb).  mckusick then picked up and
-updated the patch, and acted as a flag-waver.  Feedback, suggestions
-and discussions were carried by emaste, jhb, jilles, rmacklem.  kris
-performed an initial ports investigation followed by an exp-run by
-antoine.  Essential and all-embracing testing was done by pho.
+Credits: The 64-bit inode project, also known as ino64, started life
+many years ago as a project by Gleb Kurtsou (gleb).  Kirk McKusick
+(mckusick) then picked up and updated the patch, and acted as a
+flag-waver.  Feedback, suggestions, and discussions were carried
+by Ed Maste (emaste), John Baldwin (jhb), Jilles Tjoelker (jilles),
+and Rick Macklem (rmacklem).  Kris Moore (kris) performed an initial
+ports investigation followed by an exp-run by Antoine Brodin (antoine).
+Essential and all-embracing testing was done by Peter Holm (pho).
+The heavy lifting of coordinating all these efforts and bringing the
+project to completion were done by Konstantin Belousov (kib).
 
 Sponsored by:	The FreeBSD Foundation (emaste, kib)
 Differential revision:	https://reviews.freebsd.org/D10439
