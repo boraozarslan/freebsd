@@ -41,6 +41,8 @@
 #include <sys/_types.h>
 #include <sys/dirent.h>
 
+#if __BSD_VISIBLE
+
 #ifndef _SIZE_T_DECLARED
 typedef	__size_t	size_t;
 #define	_SIZE_T_DECLARED
@@ -55,6 +57,8 @@ typedef	__ssize_t	ssize_t;
 typedef	__off_t		off_t;
 #define	_OFF_T_DECLARED
 #endif
+
+#endif /* __BSD_VISIBLE */
 
 #if __XSI_VISIBLE
 
