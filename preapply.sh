@@ -35,6 +35,7 @@ add_files="$add_files lib/libprocstat/libprocstat_compat.c"
 svn add $add_files
 svn propset svn:keywords 'FreeBSD=%H' $add_files
 rm -f TODO.ino64 preapply.sh abi.sh ports.patch commit.log testing.txt
+rm -v $(find . -type f -name '*.orig')
 xxx=$(svn st | awk '$1 ~ /^\?$/ {print $2}')
 if [ x"$xxx" \!= x ]; then
     echo "unmanaged files were found after patching, check"
