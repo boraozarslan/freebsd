@@ -27,7 +27,7 @@ svn cp lib/libc/gen/readdir.c lib/libc/gen/readdir-compat11.c
 rm lib/libc/gen/readdir-compat11.c
 svn cp lib/libc/gen/scandir.c lib/libc/gen/scandir-compat11.c
 rm lib/libc/gen/scandir-compat11.c
-(cd $INO64GIT && git diff origin/master ino64) | gpatch -p1
+(cd $INO64GIT && git diff github/master ino64) | gpatch -p1
 add_files="lib/libc/sys/getdents.c lib/libc/sys/lstat.c"
 add_files="$add_files lib/libc/sys/mknod.c lib/libc/sys/stat.c"
 add_files="$add_files lib/libc/gen/gen-compat.h lib/libc/gen/devname-compat11.c"
