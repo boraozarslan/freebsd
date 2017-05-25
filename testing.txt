@@ -162,15 +162,15 @@ the number of ports skipped as a result are:
 
 Port                  Skipped  Status		Maintainer
 ----                  -------  ------		----------
-lang/llvm39                 -  D10796		brooks@FreeBSD.org
-lang/llvm40                 -  D10797		brooks@FreeBSD.org
-lang/ghc                  497  D10798		haskell@FreeBSD.org
-multimedia/webcamd         62  D10800		hselasky@FreeBSD.org
+lang/llvm39                 -  D10796 done	brooks@FreeBSD.org
+lang/llvm40                 -  D10797 done	brooks@FreeBSD.org
+lang/ghc                  497  D10798 accept	haskell@FreeBSD.org
+multimedia/webcamd         62  upstream fix	hselasky@FreeBSD.org
 lang/gcc6-aux              54			freebsd.contact@marino.st
-devel/libgtop              39  D10795		gnome@FreeBSD.org
+devel/libgtop              39  D10795 accept	gnome@FreeBSD.org
 sysutils/py-psutil         13  D10801		sunpoet@FreeBSD.org
 devel/llvm38                6			brooks@FreeBSD.org
-lang/rust                   4  D10799		riggs@FreeBSD.org
+lang/rust                   4  D10799 accept	riggs@FreeBSD.org
 sysutils/py-psutil121       3			swills@FreeBSD.org
 devel/llvm-devel            1			brooks@FreeBSD.org
 devel/radare2               0			torres.73a@gmail.com
