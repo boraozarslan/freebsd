@@ -16,7 +16,10 @@ changes are introduced.  Prior to ino64 we have had a period without
 any significant Application Binary Interface (ABI) or Kernel Binary
 Interface (KBI) changes and it was possible to take shortcuts with the
 upgrade procedure.  The ino64 change is backwards-compatible but not
-forwards-compatible and shortcuts must not be taken.
+forwards-compatible and shortcuts must not be taken.  (As a general
+rule, it is safest to always use the full procedure unless you follow
+the commit mailing list and are aware of which changes are not
+foward-compatible.)
 
 In addition, some users have created a libarchive.so.6 symlink to
 libarchive.so.7, in an attempt to run older binaries on a fresh post-
