@@ -10,12 +10,13 @@ be followed exactly.  The reboot after installing the new ino64 kernel,
 and the addition of COMPAT_FREEBSD11 to custom kernel configurations,
 are crucial steps.
 
-Note that this upgrade is the standard, documented update procedure.
-Prior to ino64 we have had a period without any significant Application
-Binary Interface (ABI) or Kernel Binary Interface (KBI) changes and it
-was possible to take shortcuts with the upgrade procedure.  The ino64 is
-backwards-compatible but not forwards-compatible and shortcuts must not
-be taken.
+Note that this upgrade is just the usual standard, documented procedure
+and is required whenever new syscalls or other forwards-incompatible
+changes are introduced.  Prior to ino64 we have had a period without
+any significant Application Binary Interface (ABI) or Kernel Binary
+Interface (KBI) changes and it was possible to take shortcuts with the
+upgrade procedure.  The ino64 is backwards-compatible but not forwards-
+compatible and shortcuts must not be taken.
 
 In addition, some users have created a libarchive.so.6 symlink to
 libarchive.so.7, in an attempt to run older binaries on a fresh post-
