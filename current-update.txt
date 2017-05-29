@@ -6,8 +6,9 @@ UPDATING notes added shortly thereafter [3][4][5].
 
 As some people have been tripped up by the ino64 change I want to
 emphasize again that the upgrade procedure described in UPDATING should
-be followed exactly.  The reboot after installing the new ino64 kernel
-is a crucial step.
+be followed exactly.  The reboot after installing the new ino64 kernel,
+and the addition of COMPAT_FREEBSD11 to custom kernel configurations,
+are crucial steps.
 
 Note that this upgrade is the standard, documented update procedure.
 Prior to ino64 we have had a period without any significant Application
