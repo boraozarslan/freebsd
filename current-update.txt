@@ -1,0 +1,58 @@
+To: freebsd-current@freebsd.org, freebsd-ports@freebsd.org
+Subject: ino64 status update, upgrade caution
+
+The ino64 project was committed to src last week[1][2] with
+UPDATING notes added shortly thereafter [3][4][5].
+
+As some people have been tripped up by the ino64 change I want to
+emphasize again that the upgrade procedure described in UPDATING should
+be followed exactly.  The reboot after installing the new ino64 kernel
+is a crucial step.
+
+Note that this upgrade is the standard, documented update procedure.
+Prior to ino64 we have had a period without any significant Application
+Binary Interface (ABI) or Kernel Binary Interface (KBI) changes and it
+was possible to take shortcuts with the upgrade procedure.  The ino64 is
+backwards-compatible but not forwards-compatible and shortcuts must not
+be taken.
+
+In addition, some users have created a libarchive.so.6 symlink to
+libarchive.so.7, in an attempt to run older binaries on a fresh post-
+ino64 install.  Do not do this: libarchive.so.6 and libarchive.so.7
+have an incompatible ABI and this will result in incorrect and
+unpredictable behaviour.
+
+The most recent -CURRENT package set was built prior to the ino64
+commit, and thus will not work on a fresh ino64 install or snapshot
+image.  Until the next package set is available please build from ports,
+or use Poudriere to build your own package set.
+
+Most ports with a dependency on ino64 have now been patched.  The
+remaining ports which still need a change for ino64 are:
+
+Port                        Responsible for # Skipped
+--------------------------  ----------------------------
+lang/gcc6-aux                 54
+sysutils/py-psutil            13  (fix in review D10801)
+devel/llvm38                   6
+sysutils/py-psutil121          3
+devel/radare2                  0
+emulators/qemu-user-static     0
+lang/ccl                       0
+lang/dmd2                      0
+lang/gcc5-aux                  0
+lang/modula3                   0
+lang/rust-nightly              0
+lang/twelf                     0
+lang/urweb                     0
+net-mgmt/netdata               0
+
+[1] https://svnweb.freebsd.org/changeset/base/318736
+[2] https://svnweb.freebsd.org/changeset/base/318737
+[3] https://svnweb.freebsd.org/changeset/base/318757
+[4] https://svnweb.freebsd.org/changeset/base/318758
+[5] https://svnweb.freebsd.org/changeset/base/318792
+
+
+
+
