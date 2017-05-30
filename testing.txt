@@ -169,7 +169,7 @@ multimedia/webcamd         62  new version fix	hselasky@FreeBSD.org
 lang/gcc6-aux              54			freebsd.contact@marino.st
 devel/libgtop              39  D10795 done	gnome@FreeBSD.org
 sysutils/py-psutil         13  D10801		sunpoet@FreeBSD.org
-devel/llvm38                6			brooks@FreeBSD.org
+devel/llvm38                6  r442109 done	brooks@FreeBSD.org
 lang/rust                   4  D10799 done	riggs@FreeBSD.org
 sysutils/py-psutil121       3			swills@FreeBSD.org
 devel/llvm-devel            1			brooks@FreeBSD.org
