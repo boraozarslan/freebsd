@@ -36,7 +36,11 @@ inthand_t
 	IDTVEC(justreturn1_pti),
 	IDTVEC(invltlb_pti),
 	IDTVEC(invlpg_pti),
+	IDTVEC(invlpg_invpcid_pti_pti),
+	IDTVEC(invlpg_pcid_pti_pti),
 	IDTVEC(invlrng_pti),
+	IDTVEC(invlrng_invpcid_pti_pti),
+	IDTVEC(invlrng_pcid_pti_pti),
 	IDTVEC(invlcache_pti),
 	IDTVEC(ipi_intr_bitmap_handler_pti),
 	IDTVEC(cpustop_pti),
@@ -45,6 +49,11 @@ inthand_t
 
 void	invltlb_pcid_handler(void);
 void	invltlb_invpcid_handler(void);
+void	invltlb_invpcid_pti_handler(void);
+void	invlpg_invpcid_pti_handler(void);
+void	invlpg_pcid_pti_handler(void);
+void	invlrng_invpcid_pti_handler(void);
+void	invlrng_pcid_pti_handler(void);
 int	native_start_all_aps(void);
 
 #endif /* !LOCORE */

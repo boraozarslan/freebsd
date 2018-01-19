@@ -185,7 +185,11 @@ invltlb_ret:
 	jmp	invltlb_ret
 
 	INTR_HANDLER invltlb_invpcid
+	cmpb	$0,pti(%rip)
+	jne	1f
 	call	invltlb_invpcid_handler
+	jmp	invltlb_ret
+1:	call	invltlb_invpcid_pti_handler
 	jmp	invltlb_ret
 
 /*
@@ -195,11 +199,27 @@ invltlb_ret:
 	call	invlpg_handler
 	jmp	invltlb_ret
 
+	INTR_HANDLER invlpg_invpcid_pti
+	call	invlpg_invpcid_pti_handler
+	jmp	invltlb_ret
+
+	INTR_HANDLER invlpg_pcid_pti
+	call	invlpg_pcid_pti_handler
+	jmp	invltlb_ret
+
 /*
  * Page range TLB shootdown.
  */
 	INTR_HANDLER invlrng
 	call	invlrng_handler
+	jmp	invltlb_ret
+
+	INTR_HANDLER invlrng_invpcid_pti
+	call	invlrng_invpcid_pti_handler
+	jmp	invltlb_ret
+
+	INTR_HANDLER invlrng_pcid_pti
+	call	invlrng_pcid_pti_handler
 	jmp	invltlb_ret
 
 /*

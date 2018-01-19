@@ -715,6 +715,16 @@ trap_pfault(struct trapframe *frame, int usermode)
 	/* Fault in the page. */
 	rv = vm_fault(map, va, ftype, VM_FAULT_NORMAL);
 	if (rv == KERN_SUCCESS) {
+		if (pti && pg_nx != 0 && (frame->tf_err & (PGEX_P | PGEX_W |
+		    PGEX_U | PGEX_I)) == (PGEX_P | PGEX_U | PGEX_I) &&
+		    bootverbose) {
+			/*
+			 * Most likely, userspace executed with the
+			 * kernel-mode page table.
+			 */
+			printf("PTI: pid %d comm %s tf_err %#lx\n", p->p_pid,
+			    p->p_comm, frame->tf_err);
+		}
 #ifdef HWPMC_HOOKS
 		if (ftype == VM_PROT_READ || ftype == VM_PROT_WRITE) {
 			PMC_SOFT_CALL_TF( , , page_fault, all, frame);
