@@ -293,9 +293,9 @@ static void dump_dwarf_ranges_foreach(struct readelf *re, Dwarf_Die die,
 static void dump_dwarf_str(struct readelf *re);
 static void dump_eflags(struct readelf *re, uint64_t e_flags);
 static void dump_elf(struct readelf *re);
-static void dump_dyn_val(struct readelf *re, GElf_Dyn *dyn, uint32_t stab);
-static void dump_dt_flags_val(uint64_t d_val);
 static void dump_dt_flags_1_val(uint64_t d_val);
+static void dump_dt_flags_val(uint64_t d_val);
+static void dump_dyn_val(struct readelf *re, GElf_Dyn *dyn, uint32_t stab);
 static void dump_dynamic(struct readelf *re);
 static void dump_liblist(struct readelf *re);
 static void dump_mips_abiflags(struct readelf *re, struct section *s);
