@@ -2849,7 +2849,6 @@ dump_dt_flags_val(uint64_t d_val)
 static void
 dump_dt_flags_1_val(uint64_t d_val)
 {
-	printf(" Flags:");
 	if(d_val & 0x1) {
 		d_val ^= 0x1;
 		printf(" NOW");
