@@ -120,6 +120,7 @@ typedef struct {
 	Dwarf_Addr      ld_hipc;
 	Dwarf_Half      ld_cents;
 	Dwarf_Loc	*ld_s;
+	Dwarf_Unsigned	ld_len;
 } Dwarf_Locdesc;
 
 typedef struct {

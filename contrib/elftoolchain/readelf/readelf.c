@@ -6432,7 +6432,8 @@ dump_dwarf_loclist(struct readelf *re)
 	Dwarf_Half tag, version, pointer_size, off_size;
 	Dwarf_Error de;
 	struct loc_at *la_list, *left, *right, *la;
-	unsigned int la_list_len, la_list_cap, duplicates, k;
+	uint64_t counter;
+	unsigned int la_list_len, la_list_cap, k;
 	int i, j, ret, has_content;
 
 	la_list_len = 0;
@@ -6509,15 +6510,15 @@ dump_dwarf_loclist(struct readelf *re)
 	qsort(la_list, la_list_len, sizeof(struct loc_at), loc_at_comparator);
 
 	/* Get rid of the duplicates in la_list. */
-	duplicates = 0;
+	counter = 0;
 	for(k = 1; k < la_list_len; ++k) {
-		left = &la_list[k - 1 - duplicates];
+		left = &la_list[k - 1 - (unsigned int)counter];
 		right = &la_list[k];
 
 		if(left->la_off == right->la_off)
-			duplicates += 1;
+			counter += 1;
 		else
-			la_list[k - duplicates] = *right;
+			la_list[k - (unsigned int)counter] = *right;
 	}
 
 	has_content = 0;
@@ -6537,8 +6538,10 @@ dump_dwarf_loclist(struct readelf *re)
 		}
 		set_cu_context(re, la->la_cu_psize, la->la_cu_osize,
 		    la->la_cu_ver);
+		counter = 0;
 		for (i = 0; i < lcnt; i++) {
-			printf("    %8.8jx ", (uintmax_t) la->la_off);
+			printf("    %8.8jx ",
+				(uintmax_t) la->la_off + (uintmax_t) counter);
 			if (llbuf[i]->ld_lopc == 0 && llbuf[i]->ld_hipc == 0) {
 				printf("<End of list>\n");
 				continue;
@@ -6561,6 +6564,7 @@ dump_dwarf_loclist(struct readelf *re)
 			if (llbuf[i]->ld_lopc == llbuf[i]->ld_hipc)
 				printf(" (start == end)");
 			putchar('\n');
+			counter += llbuf[i]->ld_len;
 		}
 		for (i = 0; i < lcnt; i++) {
 			dwarf_dealloc(re->dbg, llbuf[i]->ld_s,
