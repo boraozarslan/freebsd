@@ -6431,7 +6431,7 @@ dump_dwarf_loclist(struct readelf *re)
 	Dwarf_Signed lcnt;
 	Dwarf_Half tag, version, pointer_size, off_size;
 	Dwarf_Error de;
-	struct loc_at *la_list, *left, *right, *la;;
+	struct loc_at *la_list, *left, *right, *la;
 	unsigned int la_list_len, la_list_cap, duplicates, k;
 	int i, j, ret, has_content;
 
