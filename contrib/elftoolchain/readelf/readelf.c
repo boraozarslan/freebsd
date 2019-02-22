@@ -6049,6 +6049,7 @@ static int
 loc_at_comparator(const void *la1, const void *la2)
 {
 	const struct loc_at *left, *right;
+
 	left = (const struct loc_at *)la1;
 	right = (const struct loc_at *)la2;
 
@@ -6069,6 +6070,7 @@ search_loclist_at(struct readelf *re, Dwarf_Die die, Dwarf_Unsigned lowpc,
 	Dwarf_Bool is_info;
 	Dwarf_Error de;
 	int i, ret;
+	struct loc_at *la;
 
 	is_info = dwarf_get_die_infotypes_flag(die);
 
@@ -6117,19 +6119,20 @@ search_loclist_at(struct readelf *re, Dwarf_Die die, Dwarf_Unsigned lowpc,
 
 		if (*la_list_cap == *la_list_len) {
 			*la_list = realloc(*la_list,
-					*la_list_cap * 2 * sizeof(**la_list));
+			    *la_list_cap * 2 * sizeof(**la_list));
 			if (la_list == NULL) {
 				errx(EXIT_FAILURE, "realloc failed");
 				return;
 			}
 			*la_list_cap *= 2;
 		}
-		(*la_list)[*la_list_len].la_at = attr_list[i];
-		(*la_list)[*la_list_len].la_off = off;
-		(*la_list)[*la_list_len].la_lowpc = lowpc;
-		(*la_list)[*la_list_len].la_cu_psize = re->cu_psize;
-		(*la_list)[*la_list_len].la_cu_osize = re->cu_osize;
-		(*la_list)[*la_list_len].la_cu_ver = re->cu_ver;
+		la = &((*la_list)[*la_list_len]);
+		la->la_at = attr_list[i];
+		la->la_off = off;
+		la->la_lowpc = lowpc;
+		la->la_cu_psize = re->cu_psize;
+		la->la_cu_osize = re->cu_osize;
+		la->la_cu_ver = re->cu_ver;
 		(*la_list_len)++;
 	}
 
@@ -6140,7 +6143,7 @@ cont_search:
 		warnx("dwarf_child: %s", dwarf_errmsg(de));
 	else if (ret == DW_DLV_OK)
 		search_loclist_at(re, ret_die, lowpc, la_list,
-				la_list_len, la_list_cap);
+		    la_list_len, la_list_cap);
 
 	/* Search sibling. */
 	ret = dwarf_siblingof_b(re->dbg, die, &ret_die, is_info, &de);
@@ -6148,7 +6151,7 @@ cont_search:
 		warnx("dwarf_siblingof: %s", dwarf_errmsg(de));
 	else if (ret == DW_DLV_OK)
 		search_loclist_at(re, ret_die, lowpc, la_list,
-				la_list_len, la_list_cap);
+		    la_list_len, la_list_cap);
 }
 
 static void
@@ -6437,9 +6440,8 @@ dump_dwarf_loclist(struct readelf *re)
 
 	la_list_len = 0;
 	la_list_cap = 200;
-	la_list = calloc(la_list_cap, sizeof(struct loc_at));
 	if ((la_list = calloc(la_list_cap, sizeof(struct loc_at))) == NULL)
-		errx(EXIT_FAILURE, "realloc failed");
+		errx(EXIT_FAILURE, "calloc failed");
 	/* Search .debug_info section. */
 	while ((ret = dwarf_next_cu_header_b(re->dbg, NULL, &version, NULL,
 	    &pointer_size, &off_size, NULL, NULL, &de)) == DW_DLV_OK) {
@@ -6460,8 +6462,8 @@ dump_dwarf_loclist(struct readelf *re)
 		}
 
 		/* Search attributes for reference to .debug_loc section. */
-		search_loclist_at(re, die, lowpc, &la_list, 
-				  &la_list_len, &la_list_cap);
+		search_loclist_at(re, die, lowpc, &la_list,
+		    &la_list_len, &la_list_cap);
 	}
 	if (ret == DW_DLV_ERROR)
 		warnx("dwarf_next_cu_header: %s", dwarf_errmsg(de));
@@ -6494,7 +6496,7 @@ dump_dwarf_loclist(struct readelf *re)
 			 * section.
 			 */
 			search_loclist_at(re, die, lowpc, &la_list,
-					  &la_list_len, &la_list_cap);
+			    &la_list_len, &la_list_cap);
 		}
 		if (ret == DW_DLV_ERROR)
 			warnx("dwarf_next_cu_header: %s", dwarf_errmsg(de));
@@ -6510,18 +6512,19 @@ dump_dwarf_loclist(struct readelf *re)
 
 	/* Get rid of the duplicates in la_list. */
 	duplicates = 0;
-	for(k = 1; k < la_list_len; ++k) {
+	for (k = 1; k < la_list_len; ++k) {
 		left = &la_list[k - 1 - duplicates];
 		right = &la_list[k];
 
-		if(left->la_off == right->la_off)
-			duplicates += 1;
+		if (left->la_off == right->la_off)
+			duplicates++;
 		else
 			la_list[k - duplicates] = *right;
 	}
+	la_list_len -= duplicates;
 
 	has_content = 0;
-	for(k = 0; k < la_list_len; ++k) {
+	for (k = 0; k < la_list_len; ++k) {
 		la = &la_list[k];
 		if ((ret = dwarf_loclist_n(la->la_at, &llbuf, &lcnt, &de)) !=
 		    DW_DLV_OK) {
