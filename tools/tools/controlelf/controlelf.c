@@ -59,7 +59,6 @@ struct ControlFeatures {
 	const char *desc;
 };
 
-// NT_FREEBSD_FEATURE_CTL
 static struct ControlFeatures featurelist[] = {
 	{ "aslr",	NT_FREEBSD_FCTL_ASLR_DISABLE,			"Disable ASLR" },
 	{ "wx", 	NT_FREEBSD_FCTL_WX_ENABLE,			"Enable W^X" },
@@ -178,7 +177,7 @@ fail:
 Usage: %s [options] file...\n\
   Set or display the control features for an ELF object.\n\n\
   Supported options are:\n\
-  -l                        List known CTL features.\n\
+  -l                        List known control features.\n\
   -e [+-=]feature,list      Edit features from a comma separated list.\n\
   -h | --help               Print a usage message and exit.\n"
 
@@ -255,7 +254,7 @@ edit_file_features(Elf *elf, int phcount, int fd, char *val)
 	u_int64_t off;
 
 	if (get_file_features(elf, phcount, fd, &features, &off) == 0) {
-		warnx("No CTL features note on the file.\n");
+		warnx("No control features note on the file.\n");
 		return 0;
 	}
 
