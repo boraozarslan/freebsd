@@ -6061,6 +6061,7 @@ search_loclist_at(struct readelf *re, Dwarf_Die die, Dwarf_Unsigned lowpc,
     struct loc_at **la_list, unsigned int *la_list_len,
     unsigned int *la_list_cap)
 {
+	struct loc_at *la;
 	Dwarf_Attribute *attr_list;
 	Dwarf_Die ret_die;
 	Dwarf_Unsigned off;
@@ -6070,7 +6071,6 @@ search_loclist_at(struct readelf *re, Dwarf_Die die, Dwarf_Unsigned lowpc,
 	Dwarf_Bool is_info;
 	Dwarf_Error de;
 	int i, ret;
-	struct loc_at *la;
 
 	is_info = dwarf_get_die_infotypes_flag(die);
 
@@ -6120,10 +6120,8 @@ search_loclist_at(struct readelf *re, Dwarf_Die die, Dwarf_Unsigned lowpc,
 		if (*la_list_cap == *la_list_len) {
 			*la_list = realloc(*la_list,
 			    *la_list_cap * 2 * sizeof(**la_list));
-			if (la_list == NULL) {
+			if (la_list == NULL)
 				errx(EXIT_FAILURE, "realloc failed");
-				return;
-			}
 			*la_list_cap *= 2;
 		}
 		la = &((*la_list)[*la_list_len]);
