@@ -113,7 +113,7 @@ typedef struct {
         Dwarf_Unsigned	lr_number;
 	Dwarf_Unsigned	lr_number2;
 	Dwarf_Unsigned	lr_offset;
-	Dwarf_Unsigned  lr_len;
+	Dwarf_Unsigned	lr_len;
 } Dwarf_Loc;
 
 typedef struct {

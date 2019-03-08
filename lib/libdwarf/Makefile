@@ -100,7 +100,7 @@ sys/elf32.h sys/elf64.h sys/elf_common.h: ${SRCTOP}/sys/${.TARGET} .NOMETA
 
 LIBADD+=	elf
 
-SHLIB_MAJOR=	4
+SHLIB_MAJOR=	5
 
 MAN=	dwarf.3                                         \
 	dwarf_add_arange.3				\

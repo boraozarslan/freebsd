@@ -6429,13 +6429,16 @@ dump_dwarf_loclist(struct readelf *re)
 	Dwarf_Locdesc **llbuf;
 	Dwarf_Unsigned lowpc;
 	Dwarf_Signed lcnt;
-	Dwarf_Half tag, version, pointer_size, off_size;
+	Dwarf_Half tag, version, pointer_size, off_size, psize;
 	Dwarf_Error de;
 	struct loc_at *la_list, *left, *right, *la;
 	uint64_t counter;
-	unsigned int la_list_len, la_list_cap, k;
+	unsigned int la_list_len, la_list_cap, k, duplicates;
 	int i, j, ret, has_content;
 
+	if (dwarf_get_address_size(re->dbg, &psize, &de) != DW_DLV_OK) {
+            errx(EXIT_FAILURE, "dwarf_get_address_size failed: %s", dwarf_errmsg(de));
+	}
 	la_list_len = 0;
 	la_list_cap = 200;
 	la_list = calloc(la_list_cap, sizeof(struct loc_at));
@@ -6510,15 +6513,15 @@ dump_dwarf_loclist(struct readelf *re)
 	qsort(la_list, la_list_len, sizeof(struct loc_at), loc_at_comparator);
 
 	/* Get rid of the duplicates in la_list. */
-	counter = 0;
+	duplicates = 0;
 	for(k = 1; k < la_list_len; ++k) {
-		left = &la_list[k - 1 - (unsigned int)counter];
+		left = &la_list[k - 1 - duplicates];
 		right = &la_list[k];
 
 		if(left->la_off == right->la_off)
-			counter += 1;
+			duplicates++;
 		else
-			la_list[k - (unsigned int)counter] = *right;
+			la_list[k - duplicates] = *right;
 	}
 
 	has_content = 0;
@@ -6541,7 +6544,7 @@ dump_dwarf_loclist(struct readelf *re)
 		counter = 0;
 		for (i = 0; i < lcnt; i++) {
 			printf("    %8.8jx ",
-				(uintmax_t) la->la_off + (uintmax_t) counter);
+			    (uintmax_t) la->la_off + (uintmax_t) counter);
 			if (llbuf[i]->ld_lopc == 0 && llbuf[i]->ld_hipc == 0) {
 				printf("<End of list>\n");
 				continue;
@@ -6555,6 +6558,8 @@ dump_dwarf_loclist(struct readelf *re)
 
 			putchar('(');
 			for (j = 0; (Dwarf_Half) j < llbuf[i]->ld_cents; j++) {
+
+				counter += llbuf[i]->ld_s[j].lr_len;
 				dump_dwarf_loc(re, &llbuf[i]->ld_s[j]);
 				if (j < llbuf[i]->ld_cents - 1)
 					printf("; ");
@@ -6564,7 +6569,7 @@ dump_dwarf_loclist(struct readelf *re)
 			if (llbuf[i]->ld_lopc == llbuf[i]->ld_hipc)
 				printf(" (start == end)");
 			putchar('\n');
-			counter += llbuf[i]->ld_len;
+			counter += (2 + 2 * psize);
 		}
 		for (i = 0; i < lcnt; i++) {
 			dwarf_dealloc(re->dbg, llbuf[i]->ld_s,
