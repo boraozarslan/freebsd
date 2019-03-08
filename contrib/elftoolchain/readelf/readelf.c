@@ -6558,7 +6558,6 @@ dump_dwarf_loclist(struct readelf *re)
 
 			putchar('(');
 			for (j = 0; (Dwarf_Half) j < llbuf[i]->ld_cents; j++) {
-
 				counter += llbuf[i]->ld_s[j].lr_len;
 				dump_dwarf_loc(re, &llbuf[i]->ld_s[j]);
 				if (j < llbuf[i]->ld_cents - 1)
