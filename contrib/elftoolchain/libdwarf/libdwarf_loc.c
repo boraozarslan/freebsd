@@ -44,10 +44,11 @@ _dwarf_loc_fill_loc(Dwarf_Debug dbg, Dwarf_Locdesc *lbuf, uint8_t pointer_size,
 	int count;
 	uint64_t operand1;
 	uint64_t operand2;
-	uint8_t *ps, *pe, s;
+	uint8_t *ps, *pe, s, *pp;
 
 	count = 0;
 	ps = p;
+	pp = p;
 	pe = p + len;
 
 	/*
@@ -357,8 +358,10 @@ _dwarf_loc_fill_loc(Dwarf_Debug dbg, Dwarf_Locdesc *lbuf, uint8_t pointer_size,
 		if (lbuf != NULL) {
 			lbuf->ld_s[count].lr_number = operand1;
 			lbuf->ld_s[count].lr_number2 = operand2;
+			lbuf->ld_s[count].lr_len = p - pp;
 		}
 
+		pp = p;
 		count++;
 	}
 

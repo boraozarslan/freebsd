@@ -113,6 +113,7 @@ typedef struct {
         Dwarf_Unsigned	lr_number;
 	Dwarf_Unsigned	lr_number2;
 	Dwarf_Unsigned	lr_offset;
+	Dwarf_Unsigned  lr_len;
 } Dwarf_Loc;
 
 typedef struct {
@@ -120,7 +121,6 @@ typedef struct {
 	Dwarf_Addr      ld_hipc;
 	Dwarf_Half      ld_cents;
 	Dwarf_Loc	*ld_s;
-	Dwarf_Unsigned	ld_len;
 } Dwarf_Locdesc;
 
 typedef struct {
