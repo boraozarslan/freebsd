@@ -92,6 +92,7 @@ static g_fini_t g_dev_fini;
 static g_taste_t g_dev_taste;
 static g_orphan_t g_dev_orphan;
 static g_attrchanged_t g_dev_attrchanged;
+static g_resize_t g_dev_resize;
 
 static struct g_class g_dev_class	= {
 	.name = "DEV",
@@ -100,7 +101,8 @@ static struct g_class g_dev_class	= {
 	.fini = g_dev_fini,
 	.taste = g_dev_taste,
 	.orphan = g_dev_orphan,
-	.attrchanged = g_dev_attrchanged
+	.attrchanged = g_dev_attrchanged,
+	.resize = g_dev_resize
 };
 
 /*
@@ -300,6 +302,15 @@ g_dev_attrchanged(struct g_consumer *cp, const char *attr)
 		g_dev_set_physpath(cp);
 		return;
 	}
+}
+
+static void
+g_dev_resize(struct g_consumer *cp)
+{
+	char buf[SPECNAMELEN + 6];
+
+	snprintf(buf, sizeof(buf), "cdev=%s", cp->provider->name);
+	devctl_notify_f("GEOM", "DEV", "SIZECHANGE", buf, M_WAITOK);
 }
 
 struct g_provider *
@@ -677,8 +688,10 @@ g_dev_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag, struct thread
 		alloc_size = 0;
 
 		if (zone_args->zone_cmd == DISK_ZONE_REPORT_ZONES) {
-
 			rep = &zone_args->zone_params.report;
+#define	MAXENTRIES	(MAXPHYS / sizeof(struct disk_zone_rep_entry))
+			if (rep->entries_allocated > MAXENTRIES)
+				rep->entries_allocated = MAXENTRIES;
 			alloc_size = rep->entries_allocated *
 			    sizeof(struct disk_zone_rep_entry);
 			if (alloc_size != 0)
@@ -688,15 +701,11 @@ g_dev_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag, struct thread
 			rep->entries = new_entries;
 		}
 		error = g_io_zonecmd(zone_args, cp);
-		if ((zone_args->zone_cmd == DISK_ZONE_REPORT_ZONES)
-		 && (alloc_size != 0)
-		 && (error == 0)) {
+		if (zone_args->zone_cmd == DISK_ZONE_REPORT_ZONES &&
+		    alloc_size != 0 && error == 0)
 			error = copyout(new_entries, old_entries, alloc_size);
-		}
-		if ((old_entries != NULL)
-		 && (rep != NULL))
+		if (old_entries != NULL && rep != NULL)
 			rep->entries = old_entries;
-
 		if (new_entries != NULL)
 			g_free(new_entries);
 		break;

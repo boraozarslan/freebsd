@@ -121,11 +121,16 @@ ip_output_pfil(struct mbuf **mp, struct ifnet *ifp, struct inpcb *inp,
 
 	/* Run through list of hooks for output packets. */
 	odst.s_addr = ip->ip_dst.s_addr;
-	*error = pfil_run_hooks(&V_inet_pfil_hook, mp, ifp, PFIL_OUT, 0, inp);
-	m = *mp;
-	if ((*error) != 0 || m == NULL)
+	switch (pfil_run_hooks(V_inet_pfil_head, mp, ifp, PFIL_OUT, inp)) {
+	case PFIL_DROPPED:
+		*error = EPERM;
+		/* FALLTHROUGH */
+	case PFIL_CONSUMED:
 		return 1; /* Finished */
-
+	case PFIL_PASS:
+		*error = 0;
+	}
+	m = *mp;
 	ip = mtod(m, struct ip *);
 
 	/* See if destination IP address was changed by packet filter. */
@@ -568,7 +573,7 @@ sendit:
 #endif /* IPSEC */
 
 	/* Jump over all PFIL processing if hooks are not active. */
-	if (PFIL_HOOKED(&V_inet_pfil_hook)) {
+	if (PFIL_HOOKED_OUT(V_inet_pfil_head)) {
 		switch (ip_output_pfil(&m, ifp, inp, dst, &fibnum, &error)) {
 		case 1: /* Finished */
 			goto done;
@@ -589,9 +594,9 @@ sendit:
 		}
 	}
 
-	/* 127/8 must not appear on wire - RFC1122. */
-	if ((ntohl(ip->ip_dst.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET ||
-	    (ntohl(ip->ip_src.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET) {
+	/* IN_LOOPBACK must not appear on the wire - RFC1122. */
+	if (IN_LOOPBACK(ntohl(ip->ip_dst.s_addr)) ||
+	    IN_LOOPBACK(ntohl(ip->ip_src.s_addr))) {
 		if ((ifp->if_flags & IFF_LOOPBACK) == 0) {
 			IPSTAT_INC(ips_badaddr);
 			error = EADDRNOTAVAIL;

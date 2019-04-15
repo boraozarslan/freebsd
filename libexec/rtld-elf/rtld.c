@@ -66,6 +66,7 @@ __FBSDID("$FreeBSD$");
 #include "paths.h"
 #include "rtld_tls.h"
 #include "rtld_printf.h"
+#include "rtld_malloc.h"
 #include "rtld_utrace.h"
 #include "notes.h"
 
@@ -91,6 +92,7 @@ static void digest_dynamic2(Obj_Entry *, const Elf_Dyn *, const Elf_Dyn *,
     const Elf_Dyn *);
 static void digest_dynamic(Obj_Entry *, int);
 static Obj_Entry *digest_phdr(const Elf_Phdr *, int, caddr_t, const char *);
+static void distribute_static_tls(Objlist *, RtldLockState *);
 static Obj_Entry *dlcheck(void *);
 static int dlclose_locked(void *, RtldLockState *);
 static Obj_Entry *dlopen_object(const char *name, int fd, Obj_Entry *refobj,
@@ -1246,8 +1248,8 @@ digest_dynamic1(Obj_Entry *obj, int early, const Elf_Dyn **dyn_rpath,
 		    obj->textrel = true;
 		if (dynp->d_un.d_val & DF_BIND_NOW)
 		    obj->bind_now = true;
-		/*if (dynp->d_un.d_val & DF_STATIC_TLS)
-		    ;*/
+		if (dynp->d_un.d_val & DF_STATIC_TLS)
+		    obj->static_tls = true;
 	    break;
 #ifdef __mips__
 	case DT_MIPS_LOCAL_GOTNO:
@@ -2897,16 +2899,6 @@ relocate_object(Obj_Entry *obj, bool bind_now, Obj_Entry *rtldobj,
 	    lockstate) == -1)
 		return (-1);
 
-	/*
-	 * Process the non-PLT IFUNC relocations.  The relocations are
-	 * processed in two phases, because IFUNC resolvers may
-	 * reference other symbols, which must be readily processed
-	 * before resolvers are called.
-	 */
-	if (obj->non_plt_gnu_ifunc &&
-	    reloc_non_plt(obj, rtldobj, flags | SYMLOOK_IFUNC, lockstate))
-		return (-1);
-
 	if (!obj->mainprog && obj_enforce_relro(obj) == -1)
 		return (-1);
 
@@ -2965,14 +2957,14 @@ resolve_object_ifunc(Obj_Entry *obj, bool bind_now, int flags,
 	if (obj->ifuncs_resolved)
 		return (0);
 	obj->ifuncs_resolved = true;
-	if (obj->irelative && reloc_iresolve(obj, lockstate) == -1)
+	if (!obj->irelative && !((obj->bind_now || bind_now) && obj->gnu_ifunc))
+		return (0);
+	if (obj_disable_relro(obj) == -1 ||
+	    (obj->irelative && reloc_iresolve(obj, lockstate) == -1) ||
+	    ((obj->bind_now || bind_now) && obj->gnu_ifunc &&
+	    reloc_gnu_ifunc(obj, flags, lockstate) == -1) ||
+	    obj_enforce_relro(obj) == -1)
 		return (-1);
-	if ((obj->bind_now || bind_now) && obj->gnu_ifunc) {
-		if (obj_disable_relro(obj) ||
-		    reloc_gnu_ifunc(obj, flags, lockstate) == -1 ||
-		    obj_enforce_relro(obj))
-			return (-1);
-	}
 	return (0);
 }
 
@@ -3339,8 +3331,16 @@ dlopen_object(const char *name, int fd, Obj_Entry *refobj, int lo_flags,
 	if (globallist_next(old_obj_tail) != NULL) {
 	    /* We loaded something new. */
 	    assert(globallist_next(old_obj_tail) == obj);
-	    result = load_needed_objects(obj,
-		lo_flags & (RTLD_LO_DLOPEN | RTLD_LO_EARLY));
+	    result = 0;
+	    if ((lo_flags & RTLD_LO_EARLY) == 0 && obj->static_tls &&
+	      !allocate_tls_offset(obj)) {
+		_rtld_error("%s: No space available "
+		  "for static Thread Local Storage", obj->path);
+		result = -1;
+	    }
+	    if (result != -1)
+		result = load_needed_objects(obj, lo_flags & (RTLD_LO_DLOPEN |
+		    RTLD_LO_EARLY));
 	    init_dag(obj);
 	    ref_dag(obj);
 	    if (result != -1)
@@ -3400,8 +3400,10 @@ dlopen_object(const char *name, int fd, Obj_Entry *refobj, int lo_flags,
 	name);
     GDB_STATE(RT_CONSISTENT,obj ? &obj->linkmap : NULL);
 
-    if (!(lo_flags & RTLD_LO_EARLY)) {
+    if ((lo_flags & RTLD_LO_EARLY) == 0) {
 	map_stacks_exec(lockstate);
+	if (obj != NULL)
+	    distribute_static_tls(&initlist, lockstate);
     }
 
     if (initlist_objects_ifunc(&initlist, (mode & RTLD_MODEMASK) == RTLD_NOW,
@@ -4926,8 +4928,10 @@ allocate_tls(Obj_Entry *objs, void *oldtls, size_t tcbsize, size_t tcbalign)
 		addr = segbase - obj->tlsoffset;
 		memset((void*)(addr + obj->tlsinitsize),
 		       0, obj->tlssize - obj->tlsinitsize);
-		if (obj->tlsinit)
+		if (obj->tlsinit) {
 		    memcpy((void*) addr, obj->tlsinit, obj->tlsinitsize);
+		    obj->static_tls_copied = true;
+		}
 		dtv[obj->tlsindex + 1] = addr;
 	}
     }
@@ -5389,6 +5393,27 @@ map_stacks_exec(RtldLockState *lockstate)
 	}
 }
 
+static void
+distribute_static_tls(Objlist *list, RtldLockState *lockstate)
+{
+	Objlist_Entry *elm;
+	Obj_Entry *obj;
+	void (*distrib)(size_t, void *, size_t, size_t);
+
+	distrib = (void (*)(size_t, void *, size_t, size_t))(uintptr_t)
+	    get_program_var_addr("__pthread_distribute_static_tls", lockstate);
+	if (distrib == NULL)
+		return;
+	STAILQ_FOREACH(elm, list, link) {
+		obj = elm->obj;
+		if (obj->marker || !obj->tls_done || obj->static_tls_copied)
+			continue;
+		distrib(obj->tlsoffset, obj->tlsinit, obj->tlsinitsize,
+		    obj->tlssize);
+		obj->static_tls_copied = true;
+	}
+}
+
 void
 symlook_init(SymLook *dst, const char *name)
 {
@@ -5646,4 +5671,33 @@ bzero(void *dest, size_t len)
 
 	for (i = 0; i < len; i++)
 		((char *)dest)[i] = 0;
+}
+
+/* malloc */
+void *
+malloc(size_t nbytes)
+{
+
+	return (__crt_malloc(nbytes));
+}
+
+void *
+calloc(size_t num, size_t size)
+{
+
+	return (__crt_calloc(num, size));
+}
+
+void
+free(void *cp)
+{
+
+	__crt_free(cp);
+}
+
+void *
+realloc(void *cp, size_t nbytes)
+{
+
+	return (__crt_realloc(cp, nbytes));
 }
